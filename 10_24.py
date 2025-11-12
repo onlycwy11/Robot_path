@@ -492,3 +492,46 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # import matplotlib
+    # matplotlib.use('TkAgg')  # 或 'Qt5Agg', 'GTK3Agg' 等
+    # import matplotlib.pyplot as plt
+    #
+    # local_coords = {
+    #     'A': (60.00, 100.00), 'Ar': (60.00, 113.000),
+    #     'B': (75.00, 100.00), 'Br': (75.00, 113.00),
+    #     'C': (143.00, 100.00), 'Cr': (143.00, 113.00),
+    #     'D': (220.00, 100.00), 'Dr': (220.00, 113.00),
+    #     'E': (77.00, 113.00), 'Er': (77.00, 100.00),
+    #     'F': (200.00, 113.00), 'Fr': (200.00, 100.00),
+    #     'G': (293.00, 113.00), 'Gr': (293.00, 100.00),
+    #     'Left_1': (3.00, 113.00), 'Left_2': (3.00, 100.00),
+    #     'Right_1': (433.00, 113.00), 'Right_2': (433.00, 100.00),
+    #     'E1': (380.00, 150.00), 'E2': (405.00, 150.00),
+    #     'Stair1_1': (93.00, 150.00), 'Stair1_2': (122.00, 150.00),
+    #     'Stair2_1': (380.00, 199.00), 'Stair2_2': (380.00, 167.00),
+    # }
+    #
+    # plt.figure(figsize=(10, 8))
+    #
+    # # 绘制所有点
+    # for name, (x, y) in local_coords.items():
+    #     plt.scatter(x, y, label=name)
+    #     plt.text(x + 2, y, name, fontsize=9)
+    #
+    # # 连接相关点（例如A-Ar, B-Br等）
+    # for base in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+    #     x, y = local_coords[base]
+    #     xr, yr = local_coords[base + 'r']
+    #     plt.plot([x, xr], [y, yr], 'k--', alpha=0.3)
+    #
+    # # 设置坐标轴范围
+    # plt.xlim(0, 450)
+    # plt.ylim(90, 210)
+    # plt.gca().set_aspect('equal')
+    # plt.grid(True)
+    # plt.title("Local Coordinates Layout")
+    # plt.xlabel("X")
+    # plt.ylabel("Y")
+    # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    # plt.tight_layout()
+    # plt.show()

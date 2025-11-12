@@ -406,7 +406,6 @@ def add_elevator_connect(graph):
     graph.add_edge("7_2_E1", "8_2_E1", one_layer)
     graph.add_edge("7_2_E1", "9_2_E1", two_layer)
     graph.add_edge("8_2_E1", "9_2_E1", one_layer)
-
     graph.add_edge("1_2_E2", "2_2_E2", one_layer)
     graph.add_edge("1_2_E2", "3_2_E2", two_layer)
     graph.add_edge("1_2_E2", "4_2_E2", three_layer)

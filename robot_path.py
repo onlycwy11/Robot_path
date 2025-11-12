@@ -1,15 +1,19 @@
 import time
 from typing import Dict
 from graph import initial_six_graphs  # 假设已有图类，支持 dijkstra 和 dijkstra_extra
-from node import show_path_with_coords, get_coordinates_from_node, get_xyz_from_path_and_time,get_xyz_from_path_and_time_with_elevator_wait
+from node import show_path_with_coords, get_coordinates_from_node, get_xyz_from_path_and_time, \
+    get_xyz_from_path_and_time_with_elevator_wait
 import math
 import json
+
 # ============================================================
 # 全局变量
 # ============================================================
 current_paths = {}  # 存储每个任务的路径信息
-robot_status = {}   # 存储每个机器人的实时状态
+robot_status = {}  # 存储每个机器人的实时状态
 start_timestamp = 0
+
+
 # ============================================================
 # Classes
 # ============================================================
@@ -19,14 +23,18 @@ class Elevator:
         self.bldg_num = bldg_num
         self.local_id = local_id
         self.current_floor = current_floor
+        # 电梯调度表
+        # 开始时间、结束时间、起始楼层、目标楼层、使用电梯的机器人ID
         self.schedule = []  # (start_time, end_time, from_floor, to_floor, robot_id)
 
+    # 电梯预约机制
     def reserve(self, start_time: float, duration: float, from_floor: int, to_floor: int, robot_id: int):
         end_time = start_time + duration
         self.schedule.append((start_time, end_time, from_floor, to_floor, robot_id))
-        self.schedule.sort(key=lambda x: x[0])
-        self.current_floor = to_floor
-        print(f"[Elevator {self.id} Reserved] R{robot_id}: {from_floor}->{to_floor}, {start_time:.2f}s - {end_time:.2f}s")
+        self.schedule.sort(key=lambda x: x[0])  # 按时间排序
+        self.current_floor = to_floor  # 更新电梯的当前楼层
+        print(
+            f"[Elevator {self.id} Reserved] R{robot_id}: {from_floor}->{to_floor}, {start_time:.2f}s - {end_time:.2f}s")
 
 
 class Robot:
@@ -69,18 +77,18 @@ def init_six_elevators() -> Dict[str, Elevator]:
 # Path Selection
 # ============================================================
 def select_best_path_with_elevator(
-    tid: int,
-    start_pos: str,
-    target_pos: str,
-    stair_graph,
-    add_1E1_graph,
-    add_1E2_graph,
-    add_2E1_graph,
-    add_2E2_graph,
-    add_3E1_graph,
-    add_3E2_graph,
-    elevators: dict,
-    current_time: float
+        tid: int,
+        start_pos: str,
+        target_pos: str,
+        stair_graph,
+        add_1E1_graph,
+        add_1E2_graph,
+        add_2E1_graph,
+        add_2E2_graph,
+        add_3E1_graph,
+        add_3E2_graph,
+        elevators: dict,
+        current_time: float
 ):
     global current_paths
     path_results = {}
@@ -123,14 +131,24 @@ def select_best_path_with_elevator(
 
         elev = elevators[eid]
         from_floor = int(start_e.split("_")[0])
+        # 计算电梯到达起始楼层所需时间
         travel_to_start = abs(elev.current_floor - from_floor) * 1.75
+        # 机器人到达电梯前的时刻
         robot_arrival = current_time + before
+        # 电梯到达起始楼层的时刻
         elevator_ready = current_time + travel_to_start
+        # 机器人和电梯的 ”有效开始时间“ 较晚者
         effective_start = max(robot_arrival, elevator_ready)
 
+        # 初始化等待时间
         wait_time = 0.0
+
+        # 检查电梯调度表中的冲突
         for (s, e, _from, _to, _rid) in elev.schedule:
+            # 如果当前预约时间段与已有预约冲突
+            # 无冲突的情况：电梯停止时间早于预约开始时间 或 电梯启动时间晚于预约结束时间
             if not (effective_start + between <= s or effective_start >= e):
+                # 计算需要等待的时间（直到冲突预约结束）
                 wait_time = max(wait_time, e - effective_start)
 
         actual_time = before + travel_to_start + wait_time + between + after
@@ -164,7 +182,8 @@ def select_best_path_with_elevator(
         "wait_time": best_info['wait_time']
     }
 
-    print(f"\nTask {tid} selected route: {best_key}, Total time: {best_info['actual_time']:.2f}s (wait {best_info['wait_time']:.2f}s)")
+    print(
+        f"\nTask {tid} selected route: {best_key}, Total time: {best_info['actual_time']:.2f}s (wait {best_info['wait_time']:.2f}s)")
     print(f"Path: {best_info['path']}\n")
     print(f"Real Path: {real_path}\n")
 
@@ -207,7 +226,8 @@ class Scheduler:
 
         robot = min(feasible_robots, key=lambda r: r.available_time)
         if current_time < robot.available_time:
-            return {"error": f"Task {task.id} failed: Robot {robot.id} busy until {robot.available_time - current_time:.2f}s later"}
+            return {
+                "error": f"Task {task.id} failed: Robot {robot.id} busy until {robot.available_time - current_time:.2f}s later"}
 
         best_info = select_best_path_with_elevator(
             tid=robot.id,
@@ -254,9 +274,9 @@ class Scheduler:
             "path_info": best_info
         }
 
-# ============================================================
-# 实时获取机器人状态函数
-# ============================================================
+    # ============================================================
+    # 实时获取机器人状态函数
+    # ============================================================
     """
     获取当前所有机器人状态，输出前端可用格式：
     posionX/Y/Z 是实时坐标
@@ -274,6 +294,8 @@ class Scheduler:
     }, ... 
     ] 
     } """
+
+
 def get_robot_status_real_time(current_timestamp=None):
     """
     获取当前所有机器人状态，输出格式：
@@ -320,7 +342,7 @@ def get_robot_status_real_time(current_timestamp=None):
         # 状态判断
         status_val = 0 if now >= r.available_time else 1
         robot_type_val = 1 if r.skill.lower() == "dog" else 2
-        robot_name = "Dog"+str(r.id) if robot_type_val == 1 else "Human"+str(r.id)
+        robot_name = "Dog" + str(r.id) if robot_type_val == 1 else "Human" + str(r.id)
 
         data_list.append({
             "robotId": str(r.id),
@@ -330,19 +352,20 @@ def get_robot_status_real_time(current_timestamp=None):
             "posionX": round(pos_x, 2),
             "posionY": round(pos_y, 2),
             "posionZ": round(pos_z, 2),
-            "running_time": round(running_time, 2),   # 当前任务已运行时间
-            "total_time": round(total_time, 2),       # 当前任务总运行时间
+            "running_time": round(running_time, 2),  # 当前任务已运行时间
+            "total_time": round(total_time, 2),  # 当前任务总运行时间
             "timeStamp": int(current_timestamp),
         })
 
     return {"dataList": data_list}
 
+
 def input_task(user_input):
-     if user_input != "":
+    if user_input != "":
         user_input = user_input.split(" ")
-     else:
+    else:
         user_input = input("New Task> ").strip()
-     return user_input
+    return user_input
 
 
 # ============================================================
@@ -379,7 +402,7 @@ def start_terminal_scheduler():
 
     # ================= Terminal Loop =================
     while True:
-        user_input = input_task("")#input("New Task> ").strip()
+        user_input = input_task("")  # input("New Task> ").strip()
         now = time.time() - start_timestamp  # 确保 now 始终定义
 
         if user_input.lower() == "exit":
