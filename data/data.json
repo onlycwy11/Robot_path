@@ -1,0 +1,109 @@
+{
+  "buildings": [
+    {
+      "buildingName": "1号楼",
+      "buildingLayerSize": 3,
+      "buildingNeighboringAverageDistance": 3.5
+    },
+    {
+      "buildingName": "2号楼",
+      "buildingLayerSize": 9,
+      "buildingNeighboringAverageDistance": 3.5
+    },
+    {
+      "buildingName": "3号楼",
+      "buildingLayerSize": 6,
+      "buildingNeighboringAverageDistance": 3.5
+    }
+  ],
+  "elevators": [
+    {
+      "elevatorName": "1号楼电梯一",
+      "buildingName": "1号楼",
+      "averageSpeed": 2.0,
+      "doorOperationTime": 1.5,
+      "position": { "x": 38000, "y": 15000, "z": 110 },
+      "initialLayer": 1
+    },
+    {
+      "elevatorName": "1号楼电梯二",
+      "buildingName": "1号楼",
+      "averageSpeed": 2.0,
+      "doorOperationTime": 1.5,
+      "position": { "x": 41000, "y": 15000, "z": 110 },
+      "initialLayer": 1
+    },
+    {
+      "elevatorName": "2号楼电梯一",
+      "buildingName": "2号楼",
+      "averageSpeed": 2.0,
+      "doorOperationTime": 1.5,
+      "position": { "x": 101299, "y": 15000, "z": 110 },
+      "initialLayer": 1
+    },
+    {
+      "elevatorName": "2号楼电梯二",
+      "buildingName": "2号楼",
+      "averageSpeed": 2.0,
+      "doorOperationTime": 10,
+      "position": { "x": 104299, "y": 15000, "z": 110 },
+      "initialLayer": 1
+    },
+    {
+      "elevatorName": "3号楼电梯一",
+      "buildingName": "1号楼",
+      "averageSpeed": 2.0,
+      "doorOperationTime": 10,
+      "position": { "x": 165198, "y": 15000, "z": 110 },
+      "initialLayer": 1
+    },
+    {
+      "elevatorName": "3号楼电梯二",
+      "buildingName": "1号楼",
+      "averageSpeed": 2.0,
+      "doorOperationTime": 10,
+      "position": { "x": 168198, "y": 15000, "z": 110 },
+      "initialLayer": 1
+    }
+  ],
+  "robots": [
+    {
+      "robotName": "JK01",
+      "type": "quadruped",
+      "averageSpeedFlat": 1.5,
+      "averageSpeedStairs": 0.5,
+      "capacity": 30,
+      "initialPosition": { "x": 6000, "y": 10000, "z": 110 }
+    },
+    {
+      "robotName": "GO2W",
+      "type": "quadruped",
+      "averageSpeedFlat": 1.5,
+      "averageSpeedStairs": 0.5,
+      "capacity": 30,
+      "initialPosition": { "x": 6000, "y": 10000, "z": 110 }
+    }
+  ],
+  "jobs": [
+    {
+      "jobName": "Transportation_of_medical_supplies",
+      "startTime": null,
+      "endTime": null,
+      "taskList": [
+        "this_layer_transport",
+        "this_building_is_under_transport",
+        "transportation_between_buildings"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "taskName": "This_layer_transport",
+      "startPosition": { "x": 6000, "y": 10000, "z": 110 },
+      "endPosition": { "x": 6000, "y": 10000, "z": 110 },
+      "pickupTime": 45,
+      "dropoffTime": 45,
+      "requiredSpace": 70
+    }
+  ]
+}
