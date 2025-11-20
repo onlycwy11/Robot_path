@@ -480,6 +480,66 @@ class BatchScheduler:
             print(
                 f"机器人 {robot.id} 执行任务 {task.id}: {assignment['start_time']:.2f}s - {assignment['end_time']:.2f}s")
 
+    def find_feasible_robots(self, task, current_time):
+        return [r for r in self.robots if r.skill == task.skill]
+
+    def assign_task(self, task, current_time):
+        feasible_robots = self.find_feasible_robots(task, current_time)
+        global robot_status
+
+        if not feasible_robots:
+            return {"error": f"No robot matches skill '{task.skill}' for Task {task.id}"}
+
+        robot = min(feasible_robots, key=lambda r: r.available_time)
+        if current_time < robot.available_time:
+            return {
+                "error": f"Task {task.id} failed: Robot {robot.id} busy until {robot.available_time - current_time:.2f}s later"}
+
+        best_info = select_best_path_with_elevator(
+            tid=robot.id,
+            start_pos=robot.position,
+            target_pos=task.target,
+            stair_graph=self.stair_graph,
+            add_1E1_graph=self.elevator_graphs["1_E1"],
+            add_1E2_graph=self.elevator_graphs["1_E2"],
+            add_2E1_graph=self.elevator_graphs["2_E1"],
+            add_2E2_graph=self.elevator_graphs["2_E2"],
+            add_3E1_graph=self.elevator_graphs["3_E1"],
+            add_3E2_graph=self.elevator_graphs["3_E2"],
+            elevators=self.elevators,
+            current_time=current_time
+        )
+
+        if "error" in best_info:
+            return {"error": f"Task {task.id} failed: No valid path from {robot.position} to {task.target}"}
+
+        # 更新机器人状态
+        robot.position = task.target
+        robot.path = best_info["path"]
+        robot.path_start_time = current_time
+        robot.path_total_time = best_info["actual_time"]
+        robot.available_time = current_time + best_info["actual_time"]
+        robot.wait_time = best_info.get("wait_time", 0.0)
+
+        robot.current_position = get_coordinates_from_node(robot.position)
+
+        robot_status[robot.id] = {
+            "position": robot.position,
+            "real_position": robot.current_position,
+            "available_time": robot.available_time,
+            "current_task": task.id,
+            "skill": robot.skill,
+            "wait_time": robot.wait_time
+        }
+
+        return {
+            "robot_id": robot.id,
+            "task_id": task.id,
+            "start_time": current_time,
+            "end_time": robot.available_time,
+            "path_info": best_info
+        }
+
 
 def get_robot_status_real_time(batch_scheduler, start_timestamp: int, current_timestamp=None):
     """
@@ -579,7 +639,7 @@ def batch_scheduling_demo():
     # 执行批量调度
     assignments = batch_scheduler.schedule_batch(tasks)
 
-    return scheduler, assignments
+    return batch_scheduler, assignments
 
 
 def start_interactive_scheduler():
@@ -635,7 +695,7 @@ def start_interactive_scheduler():
             break
 
         # 查看机器人状态
-        elif user_inputlower() == "robot":
+        elif user_input.lower() == "robot":
             print(f"\n系统运行时间: {now:.2f}秒")
             print("\n--- 机器人状态 ---")
             status_data = get_robot_status_real_time(current_timestamp=time.time())
@@ -700,7 +760,8 @@ def start_interactive_scheduler():
 
 
 if __name__ == "__main__":
-    scheduler, _ = batch_scheduling_demo()
-    start_time = int(time.time())
+    # scheduler, _ = batch_scheduling_demo()
+    # start_time = int(time.time())
     # 后续调用显式传递 scheduler
-    status = get_robot_status_real_time(scheduler, start_time)
+    # status = get_robot_status_real_time(scheduler, start_time)
+    start_interactive_scheduler()
