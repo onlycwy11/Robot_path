@@ -670,22 +670,14 @@ def start_interactive_scheduler():
 
     print("=== 交互式批量调度系统 ===")
     print("输入任务格式：<skill> <target_position>，例如：dog 6_3_G")
+    print("输入 'batch <skill> <target> <skill> <target> ...' 一次性调度多个任务")
     print("输入 'exit' 退出系统")
     print("输入 'robot' 查看机器人状态")
-    print("输入 'batch' 开始批量调度模式（输入多个任务后一次性调度）")
     print("----------------------------------")
-
-    batch_mode = False
-    batch_tasks = []
 
     while True:
         now = time.time() - batch_scheduler.start_time
-
-        if batch_mode:
-            prompt = f"批量模式 (已收集 {len(batch_tasks)} 个任务) > "
-        else:
-            prompt = "调度系统 > "
-
+        prompt = "调度系统 > "
         user_input = input(prompt).strip()
 
         # 退出系统
@@ -703,42 +695,27 @@ def start_interactive_scheduler():
             print("------------------\n")
             continue
 
-        # 批量模式切换
-        elif user_input.lower() == "batch":
-            if batch_mode:
-                if batch_tasks:
-                    print("\n执行批量调度...")
-                    assignments = batch_scheduler.schedule_batch(batch_tasks)
-                    for assignment in assignments:
-                        print(f"任务 {assignment['task_id']} 分配给机器人 {assignment['robot_id']}")
-                    batch_tasks = []
-                batch_mode = False
-                print("已退出批量模式")
-            else:
-                batch_mode = True
-                print("进入批量模式，请输入多个任务（输入空行结束）：")
-            continue
+        # 批量调度命令
+        elif user_input.startswith("batch "):
+            # 解析批量任务
+            parts = user_input.split()[1:]  # 跳过 ‘batch’
+            if len(parts) % 2 != 0:
+                print("格式错误，请确保每个任务都有对应的机器人类型和目标位置")
+                print("示例：batch dog 6_3_G human 4_3_A")
+                continue
 
-        # 空行退出批量模式
-        elif user_input == "" and batch_mode:
-            if batch_tasks:
-                print("\n执行批量调度...")
-                assignments = batch_scheduler.schedule_batch(batch_tasks)
-                for assignment in assignments:
-                    print(f"任务 {assignment['task_id']} 分配给机器人 {assignment['robot_id']}")
-                batch_tasks = []
-            batch_mode = False
-            continue
-
-        # 批量模式下收集任务
-        elif batch_mode:
-            if len(user_input.split()) == 2:
-                skill, target = user_input.split()
+            batch_tasks = []
+            for i in range(0, len(parts), 2):
+                skill = parts[i]
+                target = parts[i+1]
                 batch_tasks.append(Task(task_counter, skill, "", target))
                 task_counter += 1
-                print(f"已添加任务: {skill} -> {target}")
-            else:
-                print("格式错误，请输入：<skill> <target_position>（例如：dog 6_3_G）")
+
+            # 执行批量调度
+            print("\n执行批量调度...")
+            assignments = batch_scheduler.schedule_batch(batch_tasks)
+            for assignment in assignments:
+                print(f"任务 {assignment['task_id']} 分配给机器人 {assignment['robot_id']}")
             continue
 
         # 单个任务处理
