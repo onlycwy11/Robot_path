@@ -4,4 +4,5 @@
 ".idea/" 
 "__pycache__/" 
 "*.pyc" 
-".vscode/" 
+".vscode/"
+"*.log"

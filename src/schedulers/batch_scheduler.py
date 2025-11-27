@@ -3,8 +3,8 @@ import json
 import time
 import math
 from typing import List, Dict
-from graph import initial_six_graphs
-from node import show_path_with_coords, get_coordinates_from_node, get_xyz_from_path_and_time, \
+from src.core.graph import initial_six_graphs
+from src.core.node import show_path_with_coords, get_coordinates_from_node, \
     get_xyz_from_path_and_time_with_elevator_wait
 from collections import defaultdict
 import copy
