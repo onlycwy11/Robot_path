@@ -1,8 +1,9 @@
-"venv/"
-"env/"
-".venv"
-".idea/" 
-"__pycache__/" 
-"*.pyc" 
-".vscode/"
-"*.log"
+venv/
+env/
+.venv
+.idea/
+__pycache__/
+*.pyc
+.vscode/
+*.log
+.DS_Store
