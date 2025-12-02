@@ -144,6 +144,7 @@ def select_best_path_with_elevator(
         wait_time = 0.0
 
         # 检查电梯调度表中的冲突
+        # (开始时间s, 结束时间e, 起始楼层, 目标楼层, 机器人ID)
         for (s, e, _from, _to, _rid) in elev.schedule:
             # 如果当前预约时间段与已有预约冲突
             # 无冲突的情况：电梯停止时间早于预约开始时间 或 电梯启动时间晚于预约结束时间

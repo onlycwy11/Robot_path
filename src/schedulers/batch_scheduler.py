@@ -2,7 +2,8 @@
 import json
 import time
 import math
-from typing import List, Dict
+import itertools
+from typing import List, Dict, Tuple, Any
 from src.core.graph import initial_six_graphs
 from src.core.node import show_path_with_coords, get_coordinates_from_node, \
     get_xyz_from_path_and_time_with_elevator_wait
@@ -18,21 +19,52 @@ robot_status = {}  # 存储每个机器人的实时状态
 
 
 class Elevator:
-    def __init__(self, eid: int, bldg_num: int, local_id: str, current_floor: int = 1):
+    def __init__(self, eid: int, bldg_num: int, local_id: str, initial_floor: int = 1):
         self.id = eid
-        self.bldg_num = bldg_num
+        self.bldg_num = bldg_num  # 电梯所属大楼
         self.local_id = local_id
-        self.current_floor = current_floor
+        self.initial_floor = initial_floor
         # 电梯调度表
         # 开始时间、结束时间、起始楼层、目标楼层、使用电梯的机器人ID
         self.schedule = []  # (start_time, end_time, from_floor, to_floor, robot_id)
+
+    # 电梯当前楼层
+    def get_current_floor(self, current_time: float) -> int:
+        """
+        根据当前时间和调度表，计算电梯的实际楼层
+        """
+        if not self.schedule:
+            return self.initial_floor
+
+        # 按开始时间排序
+        sorted_sched = sorted(self.schedule, key=lambda x: x[0])
+
+        for i, (s, e, from_floor, to_floor, robot_id) in enumerate(sorted_sched):
+            if current_time < s:
+                # 在当前预约开始前
+                if i == 0:  # 在第一个预约开始前，电梯还在初始位置
+                    return self.initial_floor
+                else:
+                    # 返回上一个预约结束后的位置
+                    _, prev_e, _, prev_to, _ = sorted_sched[i - 1]
+                    return prev_to
+
+            elif s <= current_time <= e:
+                # 在预约执行期间
+                # 计算运行进度
+                progress = (current_time - s) / (e - s)  # 0~1
+                current_floor = from_floor + int(progress * (to_floor - from_floor))
+                return current_floor
+
+        # 在所有预约之后
+        _, last_e, _, last_to, _ = sorted_sched[-1]
+        return last_to
 
     # 电梯预约机制
     def reserve(self, start_time: float, duration: float, from_floor: int, to_floor: int, robot_id: int):
         end_time = start_time + duration
         self.schedule.append((start_time, end_time, from_floor, to_floor, robot_id))
         self.schedule.sort(key=lambda x: x[0])  # 按时间排序
-        self.current_floor = to_floor  # 更新电梯当前楼层
         print(
             f"[Elevator {self.id} Reserved] R{robot_id}: {from_floor}->{to_floor}, {start_time:.2f}s - {end_time:.2f}s")
 
@@ -52,11 +84,13 @@ class Robot:
 
 
 class Task:
-    def __init__(self, tid: int, skill: str, start: str, target: str):
+    def __init__(self, tid: int, skill: str, start: str, target: str, duration: float, priority: int = 0):
         self.id = tid
         self.skill = skill
         self.start = start
         self.target = target
+        self.duration = duration
+        self.priority = priority
 
 
 def init_six_elevators() -> Dict[str, Elevator]:
@@ -87,11 +121,13 @@ def select_best_path_with_elevator(
         elevators: dict,
         current_time: float
 ):
-    global current_paths
-    path_results = {}
+    global current_paths  # 全局变量，存储所有任务的路径信息
+    path_results = {}  # 存储所有可能路径的结果
 
     # 楼梯路径
+    # 调用Dijkstra算法计算纯楼梯路径的最短路径和耗时
     path_stair, cost_stair = stair_graph.dijkstra(start_pos, target_pos)
+    # 若找到有效路径且代价不是无穷大
     if path_stair and not math.isinf(cost_stair):
         path_results["stair"] = {
             "path": path_stair,
@@ -105,6 +141,7 @@ def select_best_path_with_elevator(
         }
 
     # 电梯路径
+    # 建立电梯ID到对应增强图的映射
     graph_map = {
         "1_E1": add_1E1_graph,
         "1_E2": add_1E2_graph,
@@ -114,33 +151,51 @@ def select_best_path_with_elevator(
         "3_E2": add_3E2_graph,
     }
 
-    for eid, g in graph_map.items():
+    for eid, g in graph_map.items():  # 遍历6部电梯
         res = g.dijkstra_extra(start_pos, target_pos)
+        # 增强型的Dijkstra，返回包含电梯结点信息的详细结果
+
+        # 若无结果或无路径，跳过
         if not res or "total_time" not in res or not res["path"]:
             continue
-        before = res["segments"]["before"]
-        between = res["segments"]["between"]
-        after = res["segments"]["after"]
-        start_e, end_e = res["E_nodes"]
+
+        before = res["segments"]["before"]  # 走到电梯的时间
+        between = res["segments"]["between"]  # 电梯运行时间
+        after = res["segments"]["after"]  # 出电梯到目标的时间
+        start_e, end_e = res["E_nodes"]  # 电梯起点和终点
 
         if not start_e or not end_e or math.isinf(res["total_time"]):
-            continue
+            continue  # 如果电梯结点无效或代价无穷，跳过
 
         elev = elevators[eid]
-        from_floor = int(start_e.split("_")[0])
-        # 计算电梯到达起始楼层所需时间
-        travel_to_start = abs(elev.current_floor - from_floor) * 1.75
+        from_floor = int(start_e.split("_")[0])  # 从输入格式中提取起始楼层
+
+        # 原思路：计算电梯到达起始楼层所需时间
+        # elev.current_floor 是电梯的当前瞬时楼层
+        # 电梯可能仍在为其他任务运行或等待，并非处于当前任务来临的初始状态
+        # travel_to_start = abs(elev.current_floor - from_floor) * 1.75
+
+        # ===========注意此处代码！！！仍存在问题！！===========
         # 机器人到达电梯前的时刻
         robot_arrival = current_time + before
+        # 查询电梯在机器人到达时的预计位置
+        elevator_position_at_arrival = elev.get_current_floor(robot_arrival)
+        if elevator_position_at_arrival == from_floor:
+            travel_to_start = 0.0
+        else:
+            travel_to_start = abs(elevator_position_at_arrival - from_floor) * 1.75
+            # elevator_position_before_arrival = elev.get_current_floor(robot_arrival-travel_to_start)
+            # if elevator_position_before_arrival != elevator_position_at_arrival:
         # 电梯到达起始楼层的时刻
         elevator_ready = current_time + travel_to_start
-        # 机器人和电梯的 ”有效开始时间“ 较晚者
+        # 机器人和电梯的 ”有效开始时间“ 较晚者，乘坐电梯需保证两者都就位
         effective_start = max(robot_arrival, elevator_ready)
 
         # 初始化等待时间
         wait_time = 0.0
 
         # 检查电梯调度表中的冲突
+        # (开始时间s, 结束时间e, 起始楼层, 目标楼层, 机器人ID)
         for (s, e, _from, _to, _rid) in elev.schedule:
             # 如果当前预约时间段与已有预约冲突
             # 无冲突的情况：电梯停止时间早于预约开始时间 或 电梯启动时间晚于预约结束时间
@@ -190,7 +245,7 @@ def select_best_path_with_elevator(
         from_floor = int(best_info["start_e"].split("_")[0])
         to_floor = int(best_info["end_e"].split("_")[0])
         reserve_start_abs = current_time + best_info["before"] + best_info["wait_time"]
-        elev.reserve(
+        elev.reserve(  # 为最佳路径预约电梯
             start_time=reserve_start_abs,
             duration=best_info["between"],
             from_floor=from_floor,
@@ -237,6 +292,73 @@ class BatchScheduler:
         self._execute_assignments(final_assignments, current_time)
 
         return final_assignments
+
+    def simulate_schedule(self, robots: List[Robot], task_order: List[Task]) -> float:
+        """
+        模拟调度过程，计算给定任务顺序的总完成时间（makespan）
+        """
+        # 初始化：记录每个机器人的空闲时间（初始为0，表示立即可用）
+        robot_status = [r.available_time for r in robots]
+        makespan = 0.0  # 总完成时间（所有机器人最后完成任务的时刻）
+
+        # 遍历任务顺序中的每个任务
+        for task in task_order:
+            # 寻找最适合执行当前任务的机器人
+            best_robot_idx = -1  # 标记是否找到可用机器人
+            earliest_time = math.inf  # 记录最早可用时间
+
+            # 检查所有机器人，找到技能匹配且最早可用的
+            for i, robot in enumerate(robots):
+                if robot.skill != task.skill:
+                    continue  # 技能不匹配
+                if robot_status[i] < earliest_time:
+                    earliest_time = robot_status[i]  # 更新更早的可用时间
+                    best_robot_idx = i  # 记录机器人索引
+
+            # 如果没有可用机器人（理论上不存在）
+            if best_robot_idx == -1:
+                return math.inf  # 无可用机器人，调度失败
+
+            # 分配任务给机器人
+            robot_status[best_robot_idx] += task.duration
+            makespan = max(makespan, robot_status[best_robot_idx])
+
+        return makespan
+
+    def find_optimal_schedule(self, robots: List[Robot], tasks: List[Task]) -> tuple[list[Any] | Any, float]:
+        """
+        遍历所有可能的任务顺序，找到总完成时间最短的组合
+        """
+        # 1. 按优先级分组（高优先级任务必须优先执行）
+        tasks_sorted = sorted(tasks, key=lambda x: -x.priority)  # 降序排序
+        priority_groups = {}
+        for task in tasks_sorted:
+            if task.priority not in priority_groups:
+                priority_groups[task.priority] = []
+            priority_groups[task.priority].append(task)
+
+        # 2. 对每个优先级组内的任务生成排列组合
+        optimal_order = []  # 存储当前最优任务顺序
+        min_makespan = math.inf
+
+        # 遍历优先级组（从高到低）
+        for priority in sorted(priority_groups.keys(), reverse=True):
+            group_tasks = priority_groups[priority]
+            if not group_tasks:
+                continue
+
+            # 生成当前优先级组内所有可能的排列
+            for perm in itertools.permutations(group_tasks):
+                # 合并已确定的高优先级任务顺序
+                current_order = optimal_order + list(perm)
+                # 模拟调度
+                current_makespan = self.simulate_schedule(robots, current_order)
+                # 更新最优解
+                if current_makespan < min_makespan:
+                    min_makespan = current_makespan
+                    optimal_order = current_order
+
+        return optimal_order, min_makespan
 
     def _initial_assignment(self, tasks: List[Task], current_time: float) -> List[dict]:
         """
@@ -630,10 +752,10 @@ def batch_scheduling_demo():
 
     # 创建批量任务
     tasks = [
-        Task(0, "dog", "", "3_5_A"),
-        Task(1, "human", "", "9_2_B"),
-        Task(2, "dog", "", "6_3_C"),
-        Task(3, "human", "", "3_7_D")
+        Task(0, "dog", "", "3_5_A", 1.2),
+        Task(1, "human", "", "9_2_B", 2),
+        Task(2, "dog", "", "6_3_C", 3),
+        Task(3, "human", "", "3_7_D", 1)
     ]
 
     # 执行批量调度
@@ -699,29 +821,37 @@ def start_interactive_scheduler():
         elif user_input.startswith("batch "):
             # 解析批量任务
             parts = user_input.split()[1:]  # 跳过 ‘batch’
-            if len(parts) % 2 != 0:
-                print("格式错误，请确保每个任务都有对应的机器人类型和目标位置")
-                print("示例：batch dog 6_3_G human 4_3_A")
+            if len(parts) % 3 != 0:
+                print("格式错误，请确保每个任务都有对应的机器人类型、目标位置和执行时间")
+                # print("示例：batch dog 6_3_G human 4_3_A")
+                print("示例：batch dog 6_3_G 2 human 4_3_A 5")
                 continue
 
             batch_tasks = []
-            for i in range(0, len(parts), 2):
+            for i in range(0, len(parts), 3):
                 skill = parts[i]
                 target = parts[i+1]
-                batch_tasks.append(Task(task_counter, skill, "", target))
+                duration = int(parts[i+2])
+                batch_tasks.append(Task(task_counter, skill, "", target, duration))
                 task_counter += 1
+
+            # 确定最佳任务顺序
+            print("\n确定最佳任务顺序...")
+            best_order, _ = batch_scheduler.find_optimal_schedule(robots, batch_tasks)
 
             # 执行批量调度
             print("\n执行批量调度...")
-            assignments = batch_scheduler.schedule_batch(batch_tasks)
+            # assignments = batch_scheduler.schedule_batch(batch_tasks)
+            assignments = batch_scheduler.schedule_batch(best_order)
             for assignment in assignments:
                 print(f"任务 {assignment['task_id']} 分配给机器人 {assignment['robot_id']}")
             continue
 
         # 单个任务处理
-        elif len(user_input.split()) == 2:
-            skill, target = user_input.split()
-            task = Task(task_counter, skill, "", target)
+        elif len(user_input.split()) == 3:
+            skill, target, duration = user_input.split()
+            duration = int(duration)
+            task = Task(task_counter, skill, "", target, duration)
             result = batch_scheduler.assign_task(task, now)
 
             if "error" in result:
@@ -733,7 +863,7 @@ def start_interactive_scheduler():
                 print(f"    预计完成时间: {result['end_time']:.2f}秒")
                 task_counter += 1
         else:
-            print("格式错误，请输入：<skill> <target_position>（例如：dog 6_3_G）")
+            print("格式错误，请输入：<skill> <target_position> <duration>（例如：dog 6_3_G 1.3）")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import time
 from typing import Dict, List, Tuple
-from graph import initial_six_graphs
-from node import show_path_with_coords, get_coordinates_from_node, get_xyz_from_path_and_time, \
+from src.core.graph import initial_six_graphs
+from src.core.node import show_path_with_coords, get_coordinates_from_node, get_xyz_from_path_and_time, \
     get_xyz_from_path_and_time_with_elevator_wait
 import math
 import json
@@ -335,18 +335,38 @@ class BatchScheduler:
 
             return None  # 超过最大尝试次数仍然找不到合适的路径时，返回 None
     
-    def _resolve_conflicts_min_delta(
-    self,
-    all_conflicts: Dict,
-    assignments: Dict,
-    all_path_options: Dict,
-    current_time: float,
-    sim_elevators: Dict
-) -> bool:
+    def _calculate_elevator_wait_time(self, path_info: Dict, robot_id: int, current_time: float, sim_elevators: Dict) -> float:
         """
-        使用“时间增量最小”的策略解决电梯冲突：
-        - 对每一组电梯冲突任务，只选择其中一个任务去走自己的次优路径
-        - 这个被选中的任务，是“换路径后时间增加 Δ 最小”的那个
+        计算电梯路径的等待时间（考虑冲突）
+        返回等待时间（秒）
+        """
+        eid = path_info['eid']
+        elevator = sim_elevators[eid]
+
+        arrival_at_elevator = current_time + path_info['before']
+        desired_start = max(arrival_at_elevator, current_time)
+        duration = path_info['between']
+
+        # 检查电梯可用性
+        available, actual_start, wait_time = elevator.check_availability(desired_start, duration)
+
+        if not available:
+            return float('inf')
+
+        return wait_time
+
+    def _resolve_conflicts_min_wait_time(
+        self,
+        all_conflicts: Dict,
+        assignments: Dict,
+        all_path_options: Dict,
+        current_time: float,
+        sim_elevators: Dict
+    ) -> bool:
+        """
+        使用“电梯等待时间最小”的策略解决电梯冲突：
+        - 对每一组电梯冲突任务，选择其中一个任务去走自己的次优路径
+        - 这个被选中的任务，是“换路径后电梯等待时间减少最多”的那个
         - 更新该任务的 assignment 后，返回 True 表示有修改
         """
         updated = False
@@ -356,8 +376,8 @@ class BatchScheduler:
                 task_ids = [req['task_id'] for req in group]
                 print(f"电梯 {elevator_id} 冲突任务组: {task_ids}")
 
-                # 为组内每个任务计算次优方案和时间增量
-                candidates = []  # [(task_id, delta, alt_info_dict), ...]
+                # 为组内每个任务计算次优方案和等待时间减少量
+                candidates = []  # [(task_id, wait_time_reduction, alt_info_dict), ...]
 
                 for req in group:
                     task_id = req['task_id']
@@ -369,36 +389,62 @@ class BatchScheduler:
                         sim_elevators
                     )
                     if alt is not None:
-                        candidates.append((task_id, alt['delta'], alt))
+                        # 计算当前方案的等待时间
+                        current_assignment = assignments[task_id]
+                        current_path_info = current_assignment['path_info']
+                        current_wait_time = 0.0
+                        
+                        if current_path_info['type'] == 'elevator':
+                            current_wait_time = self._calculate_elevator_wait_time(
+                                current_path_info, current_assignment['robot'].id, current_time, sim_elevators
+                            )
+                        
+                        # 计算替代方案的等待时间
+                        new_path_info = alt['new_path_info']
+                        new_wait_time = 0.0
+                        
+                        if new_path_info['type'] == 'elevator':
+                            new_wait_time = self._calculate_elevator_wait_time(
+                                new_path_info, current_assignment['robot'].id, current_time, sim_elevators
+                            )
+                        
+                        # 等待时间减少量（负数表示增加）
+                        wait_time_reduction = current_wait_time - new_wait_time
+                        
+                        candidates.append((task_id, wait_time_reduction, alt))
 
                 if not candidates:
                     print(f"  电梯 {elevator_id} 这组任务没有可用的次优路径")
                     continue
 
-                # 选择 Δ 最小的那个任务作为“牺牲者”
-                task_to_change, best_delta, alt = min(
+                # 选择等待时间减少最多的那个任务（优先选择减少量大的）
+                task_to_change, best_wait_reduction, alt = max(
                     candidates,
                     key=lambda x: x[1]
                 )
 
-                # 执行切换
-                old_assignment = assignments[task_to_change]
-                old_time = old_assignment['path_info']['actual_time']
-                new_type = alt['new_path_type']
-                new_info = alt['new_path_info']
+                # 只有等待时间确实减少时才切换
+                if best_wait_reduction > 0:
+                    # 执行切换
+                    old_assignment = assignments[task_to_change]
+                    old_time = old_assignment['path_info']['actual_time']
+                    new_type = alt['new_path_type']
+                    new_info = alt['new_path_info']
 
-                assignments[task_to_change] = {
-                    'robot': old_assignment['robot'],
-                    'path_type': new_type,
-                    'path_info': new_info
-                }
+                    assignments[task_to_change] = {
+                        'robot': old_assignment['robot'],
+                        'path_type': new_type,
+                        'path_info': new_info
+                    }
 
-                print(
-                    f"  选择任务 {task_to_change} 切换为 {new_type}, "
-                    f"时间: {old_time:.2f}s -> {new_info['actual_time']:.2f}s "
-                    f"(Δ = {best_delta:+.2f}s)"
-                )
-                updated = True
+                    print(
+                        f"  选择任务 {task_to_change} 切换为 {new_type}, "
+                        f"等待时间减少: {best_wait_reduction:.2f}s, "
+                        f"时间: {old_time:.2f}s -> {new_info['actual_time']:.2f}s"
+                    )
+                    updated = True
+                else:
+                    print(f"  没有任务的等待时间可以减少，保持当前分配")
 
         return updated
 
@@ -484,7 +530,8 @@ class BatchScheduler:
                     )
 
                     if alternatives:
-                        best_alternative = min(alternatives, key=lambda x: x['actual_time'])
+                        # 选择等待时间最短的替代方案
+                        best_alternative = min(alternatives, key=lambda x: x.get('wait_time', 0.0))
 
                         if best_alternative['actual_time'] < current_assignment['path_info']['actual_time']:
                             # 更新为更好的路径
@@ -496,7 +543,8 @@ class BatchScheduler:
                             assignments[task_id] = new_assignment
                             updated = True
                             print(f"  任务{task_id}: {current_path_type} -> {best_alternative['path_type']}, "
-                                  f"时间: {current_assignment['path_info']['actual_time']:.1f}s -> {best_alternative['actual_time']:.1f}s")
+                                  f"时间: {current_assignment['path_info']['actual_time']:.1f}s -> {best_alternative['actual_time']:.1f}s, "
+                                  f"等待时间: {best_alternative.get('wait_time', 0.0):.1f}s")
 
         return updated
 
@@ -563,10 +611,8 @@ class BatchScheduler:
 
             print(f"发现 {len(all_conflicts)} 组电梯冲突")
 
-            # 解决冲突：按优先级处理
-            # updated = self._resolve_conflicts_priority(all_conflicts, current_assignments,
-            #                                            all_path_options, current_time, sim_elevators)
-            updated = self._resolve_conflicts_min_delta(all_conflicts, current_assignments,
+            # 解决冲突：优先选择等待时间减少最多的方案
+            updated = self._resolve_conflicts_min_wait_time(all_conflicts, current_assignments,
                                                         all_path_options, current_time, sim_elevators)
 
             if not updated:
@@ -743,8 +789,8 @@ class BatchScheduler:
         if not all_alternatives:
             return False
 
-        # 选择时间最短的方案
-        best_alternative = min(all_alternatives, key=lambda x: x['actual_time'])
+        # 选择等待时间最短的方案
+        best_alternative = min(all_alternatives, key=lambda x: x.get('wait_time', 0.0))
 
         # 只有在新方案明显更好时才切换（避免来回震荡）
         improvement_threshold = 0.95  # 新方案至少比当前好5%
@@ -758,7 +804,8 @@ class BatchScheduler:
 
             action = "等待" if best_alternative['path_type'].startswith("wait_") else "切换"
             print(f"  任务{task_id}: {current_path_type} -> {best_alternative['path_type']} ({action}), "
-                  f"时间: {current_time_cost:.1f}s -> {best_alternative['actual_time']:.1f}s")
+                  f"时间: {current_time_cost:.1f}s -> {best_alternative['actual_time']:.1f}s, "
+                  f"等待时间: {best_alternative.get('wait_time', 0.0):.1f}s")
             return True
         else:
             print(f"  任务{task_id}: 保持当前路径{current_path_type}, 替代方案不够好")
@@ -820,10 +867,16 @@ class BatchScheduler:
                 actual_time = self._calculate_actual_elevator_time(
                     path_info, current_assignment['robot'].id, current_time, sim_elevators
                 )
+                
+                # 计算等待时间
+                wait_time = self._calculate_elevator_wait_time(
+                    path_info, current_assignment['robot'].id, current_time, sim_elevators
+                )
 
                 if actual_time < float('inf'):
                     alternative = path_info.copy()
                     alternative['actual_time'] = actual_time
+                    alternative['wait_time'] = wait_time
                     alternative['path_type'] = path_type
                     alternatives.append(alternative)
 
@@ -839,6 +892,7 @@ class BatchScheduler:
             if option['path_type'] == 'stair':
                 stair_alternative = option['path_info'].copy()
                 stair_alternative['path_type'] = 'stair'
+                stair_alternative['wait_time'] = 0.0
                 return stair_alternative
 
         return None
@@ -862,13 +916,18 @@ class BatchScheduler:
                 actual_time = self._calculate_actual_elevator_time(
                     path_info, current_assignment['robot'].id, current_time, sim_elevators
                 )
+                wait_time = self._calculate_elevator_wait_time(
+                    path_info, current_assignment['robot'].id, current_time, sim_elevators
+                )
             else:
                 # 楼梯路径无冲突，使用基础时间
                 actual_time = path_info['actual_time']
+                wait_time = 0.0
 
             if actual_time < float('inf'):
                 alternative = path_info.copy()
                 alternative['actual_time'] = actual_time
+                alternative['wait_time'] = wait_time
                 alternative['path_type'] = option['path_type']
                 alternatives.append(alternative)
 
