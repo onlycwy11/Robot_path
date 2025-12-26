@@ -1,4 +1,4 @@
-
+from src.core.graph import Graph, inital_graph
 
 def find_paths_with_different_methods(graph, start, end):
     """

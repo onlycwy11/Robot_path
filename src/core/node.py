@@ -16,6 +16,7 @@ local_coords = {
     'Stair2_1': (380.00, 199.00), 'Stair2_2': (380.00, 167.00),
 }
 
+
 def get_coordinates_from_node(node: str):
     """将节点名解析为全局坐标 (cm，整数)"""
     try:
@@ -39,6 +40,7 @@ def get_coordinates_from_node(node: str):
     z = 1.10 + (floor - 1) * 3.50
     return (int(round(x * 100)), int(round(y * 100)), int(round(z * 100)))  # 转为 cm，整数
 
+
 def show_path_with_coords(path_list):
     # print("Path with Coordinates:")
     new_path = []
@@ -49,6 +51,8 @@ def show_path_with_coords(path_list):
         #     print(f"{node:<12} -> 坐标 (x={coord[0]}, y={coord[1]}, z={coord[2]})")
     # print(new_path)
     return new_path
+
+
 ################################################ for show path
 def get_speed(node1, node2):
     """根据节点类型确定速度（cm/s）"""
@@ -74,7 +78,7 @@ def get_path_points(path_list):
         node1, node2 = path_list[i], path_list[i + 1]
 
         # 计算距离与速度
-        dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+        dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
         speed = get_speed(node1, node2)
         duration = dist / speed  # 该段时间长度（秒）
 
@@ -116,6 +120,7 @@ def get_position_at_time(t: float, path_points):
             return (x, y, z)
     return path_points[-1][:3]
 
+
 def get_xyz_from_path_and_time(path_list, t: float):
     """
     输入路径 path_list 和时间 t（秒），返回当前 (x, y, z) 坐标（整数）。
@@ -127,31 +132,78 @@ def get_xyz_from_path_and_time(path_list, t: float):
     pos = get_position_at_time(t, path_points)
     return pos
 
-def get_xyz_from_path_and_time_with_elevator_wait(path_list, t: float, wait_time: float = 0.0):
+
+def get_xyz_from_path_and_time_with_elevator_wait(
+        path_list, t: float, wait_time_1: float = 0.0, wait_time_2: float = 0.0):
     """
     路径 path_list 和时间 t（秒） -> 返回当前 (x, y, z) 坐标。
-    如果路径中有 E1/E2 节点，且 wait_time > 0，
-    则在第一个 E1/E2 节点停留等待时间，然后再继续运动。
+    如果路径中有 E1/E2 节点：
+    - 在第一组 E1/E2 节点停留 wait_time_1 秒，
+    - 在第二组 E1/E2 节点停留 wait_time_2 秒。
+    - 如果只有一组 E1/E2 节点，则只在它们之间停留 wait_time_2 秒。
     """
     path_points = []
     coords = [get_coordinates_from_node(n) for n in path_list]
     total_time = 0.0
-    wait_inserted = False
+    elevator_groups = []
+    current_group = []
+
+    # 首先识别电梯节点组
+    for node in path_list:
+        if "E1" in node or "E2" in node:
+            current_group.append(node)
+        else:
+            if current_group:
+                elevator_groups.append(current_group)
+                current_group = []
+    if current_group:
+        elevator_groups.append(current_group)
+
+    # 确定等待时间应用的位置
+    wait_times = []
+    if len(elevator_groups) >= 2:
+        # 有两组或以上电梯节点
+        wait_times = [wait_time_1, wait_time_2]
+    elif len(elevator_groups) == 1 and len(elevator_groups[0]) >= 2:
+        # 只有一组电梯节点
+        wait_times = [wait_time_2]
+
+    wait_inserted = 0  # 记录已经插入了多少个等待时间
 
     for i in range(len(coords) - 1):
         x1, y1, z1 = coords[i]
         x2, y2, z2 = coords[i + 1]
         node1, node2 = path_list[i], path_list[i + 1]
 
-        # 如果当前节点是 E1/E2，并且等待时间尚未插入
-        if not wait_inserted and wait_time > 0.0 and ("E1" in node1 or "E2" in node1):
-            # 在当前节点停留 wait_time
-            path_points.append((x1, y1, z1, round(total_time, 2)))
-            total_time += wait_time
-            wait_inserted = True
+        # 检查是否需要在当前段之后插入等待时间
+        if wait_inserted < len(wait_times):
+            # 查找当前段是否属于电梯组之间的边界
+            current_nodes_in_group = []
+            # 向后查找属于同一电梯组的节点
+            j = i
+            while j + 1 < len(path_list) and (
+                    ("E1" in path_list[j] and "E1" in path_list[j + 1]) or (
+                    "E2" in path_list[j] and "E2" in path_list[j + 1])
+            ):
+                current_nodes_in_group.append(path_list[j])
+                current_nodes_in_group.append(path_list[j + 1])
+                j += 1
+
+            # 如果这是电梯组的最后一个节点（即下一节点不是电梯节点）
+            if current_nodes_in_group and j < len(path_list):
+                if j + 1 < len(path_list) and not ("E1" in path_list[j + 1] or "E2" in path_list[j + 1]):
+                    # 添加当前起点作为等待点
+                    path_points.append((x1, y1, z1, round(total_time, 2)))
+                    total_time += wait_times[wait_inserted]
+                    wait_inserted += 1
+                elif j + 1 == len(path_list):
+                    # 添加当前起点作为等待点
+                    path_points.append((x1, y1, z1, round(total_time, 2)))
+                    total_time += wait_times[wait_inserted]
+                    wait_inserted += 1
 
         # 计算这一段距离与速度
-        dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+        dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
         speed = get_speed(node1, node2)
         duration = dist / speed
         steps = int(duration)
@@ -164,7 +216,7 @@ def get_xyz_from_path_and_time_with_elevator_wait(path_list, t: float, wait_time
 
         total_time += duration
 
-    # 最后一个节点补上
+        # 最后一个节点补上
     x_end, y_end, z_end = coords[-1]
     path_points.append((int(x_end), int(y_end), int(z_end), round(total_time, 2)))
 
@@ -187,8 +239,6 @@ def get_xyz_from_path_and_time_with_elevator_wait(path_list, t: float, wait_time
     return path_points[-1][:3]
 
 
-
-
 if __name__ == "__main__":
     # nodes = ['1_1_Left_1', '1_1_Left_2', '1_1_A', '1_1_B', '1_1_Er',
     #          '1_1_C', '1_1_Fr', '1_1_D', '1_1_Gr', '1_1_Right_2',
@@ -196,7 +246,12 @@ if __name__ == "__main__":
     #          '1_2_Fr', '1_2_D', '1_2_Gr', '1_2_Right_2',
     #          '1_3_Left_2', '1_3_A', '1_3_B', '1_3_Er', '1_3_C',
     #          '1_3_Fr', '1_3_D', '1_3_Gr', '1_3_E1', '3_3_E1', '3_3_G']
-    nodes = ['1_3_E1', '3_3_E1', '3_3_G']
+    # nodes = ['1_3_E1', '3_3_E1', '3_3_G']
+    # nodes = ['4_3_G', '4_3_Gr', '4_3_E1', '1_3_E1', '1_3_G', '1_3_Dr',
+    #          '1_3_F', '1_3_Cr', '1_3_E', '1_3_Br', '1_3_Ar', '1_3_Left_1',
+    #          '1_2_Right_1', '1_2_E2', '6_2_E2', '6_2_G']
+    # nodes = ['1_2_E2', '6_2_E2']
+    nodes = ['1_2_Stair1_2', '2_2_Stair1_2', '3_2_Stair1_2', '4_2_Stair1_2', '5_2_Stair1_2', '6_2_Stair1_2', '7_2_Stair1_2', '8_2_Stair1_2', '8_2_Stair1_1', '8_2_E']
     path_pts = get_path_points(nodes)
     print(f"路径{show_path_with_coords(nodes)}")
     # print(f"共生成 {len(path_pts)} 个点，总时长约 {path_pts[-1][3]} 秒。")
@@ -205,6 +260,10 @@ if __name__ == "__main__":
     #     xyz = get_xyz_from_path_and_time(nodes, test_t)
     #     print(f"t={test_t:6.2f}s -> 位置: (x={xyz[0]}, y={xyz[1]}, z={xyz[2]})")
 
-    for test_t in [0, 9.5, 10, 50, 100,300, 500, 1000, 1001, 1002, 1003, 1004, 1005, 1010, 1020, 1030, 2000,3000]:
-        xyz = get_xyz_from_path_and_time_with_elevator_wait(nodes, test_t,1000)
+    # for test_t in [0, 9.5, 10, 30, 31, 32, 50, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
+    #                89, 90, 100, 300, 500, 510, 520, 530, 531, 535, 538, 539, 540, 546, 547, 548, 550,
+    #                560, 570, 580, 590, 600, 660, 700]:
+    for test_t in [0, 3, 5, 6, 7, 8, 9.5, 10, 11, 12, 13, 14, 15, 18, 30]:
+        xyz = get_xyz_from_path_and_time_with_elevator_wait(nodes, test_t, 0, 5)
+        # xyz = get_xyz_from_path_and_time_with_elevator_wait(nodes, test_t, 5, 30)
         print(f"t={test_t:6.2f}s -> 位置: (x={xyz[0]}, y={xyz[1]}, z={xyz[2]})")

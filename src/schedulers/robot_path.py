@@ -379,10 +379,10 @@ def start_terminal_scheduler():
     )
     elevators = init_six_elevators()
     robots = [
-        Robot(0, "dog", "1_1_Left_1"),
-        Robot(1, "dog", "1_1_Left_1"),
-        Robot(2, "human", "1_1_Left_1"),
-        Robot(3, "human", "1_1_Left_1"),
+        Robot(0, "dog", "4_3_A"),
+        Robot(1, "dog", "4_3_A"),
+        Robot(2, "human", "4_3_A"),
+        Robot(3, "human", "4_3_A"),
     ]
     elevator_graphs = {
         "1_E1": add_1E1_graph, "1_E2": add_1E2_graph,

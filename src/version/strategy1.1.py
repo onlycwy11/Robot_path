@@ -149,6 +149,7 @@ class BatchScheduler:
 
         return result
 
+    # 省略
     def _collect_all_path_options(self, tasks: List[Task], current_time: float) -> Dict[int, List[Dict]]:
         """
         为每个任务收集所有可行的路径选项
@@ -179,6 +180,7 @@ class BatchScheduler:
 
         return all_options
 
+    # 省略
     def _calculate_path_options(self, robot: Robot, task: Task, current_time: float) -> Dict:
         """计算机器人的所有路径选项（不考虑冲突）"""
         path_results = {}
@@ -246,6 +248,51 @@ class BatchScheduler:
         return path_results if path_results else None
     
     # ////////////////////////////////////////////
+    def _resolve_conflicts_and_assign(self, all_path_options: Dict, tasks: List[Task], current_time: float) -> Dict:
+        """
+        改进的冲突解决算法：支持多任务同时冲突
+        """
+        print("开始冲突解决和路径重选...")
+
+        # 创建状态副本用于模拟
+        sim_elevators = {eid: elevator.copy() for eid, elevator in self.elevators.items()}
+
+        # 初始分配：每个任务选择最优路径
+        current_assignments = {}
+        for task_id, options in all_path_options.items():
+            if options:
+                current_assignments[task_id] = options[0]  # 选择基础时间最短的
+
+        max_iterations = 10
+        for iteration in range(max_iterations):
+            print(f"\n第 {iteration + 1} 轮冲突检测...")
+
+            # 检测所有电梯冲突（改进版本）
+            all_conflicts = self._detect_all_elevator_conflicts(current_assignments, current_time, sim_elevators)
+
+            if not all_conflicts:
+                print("✅ 未发现电梯冲突，分配完成")
+                break
+
+            print(f"发现 {len(all_conflicts)} 组电梯冲突")
+
+            # 解决冲突：按优先级处理
+            # updated = self._resolve_conflicts_priority(all_conflicts, current_assignments,
+            #                                            all_path_options, current_time, sim_elevators)
+            updated = self._resolve_conflicts_min_delta(all_conflicts, current_assignments,
+                                                        all_path_options, current_time, sim_elevators)
+
+            if not updated:
+                print("⚠️ 无法解决所有冲突，尝试强制解决方案")
+                # 强制将部分任务切换到楼梯
+                self._force_resolve_conflicts(all_conflicts, current_assignments, all_path_options)
+                break
+
+            if iteration == max_iterations - 1:
+                print("⚠️ 达到最大迭代次数，使用当前分配")
+
+        return current_assignments
+
     def _get_best_available_path_for_task(
         self,
         task_id: int,
@@ -402,184 +449,6 @@ class BatchScheduler:
 
         return updated
 
-
-
-    def _detect_elevator_conflicts(self, assignments: Dict, current_time: float, sim_elevators: Dict) -> List[Dict]:
-        """
-        检测电梯冲突
-        返回冲突列表
-        """
-        conflicts = []
-
-        # 按任务收集电梯使用信息
-        elevator_usage = defaultdict(list)
-
-        for task_id, assignment in assignments.items():
-            path_info = assignment['path_info']
-            if path_info['type'] == 'elevator':
-                eid = path_info['eid']
-                robot = assignment['robot']
-
-                # 计算机器人到达电梯的时间
-                arrival_at_elevator = current_time + path_info['before']
-                desired_start = max(arrival_at_elevator, current_time)
-                duration = path_info['between']
-
-                elevator_usage[eid].append({
-                    'task_id': task_id,
-                    'robot_id': robot.id,
-                    'desired_start': desired_start,
-                    'duration': duration,
-                    'desired_end': desired_start + duration
-                })
-
-        # 检测每个电梯的冲突
-        for eid, usage_list in elevator_usage.items():
-            if len(usage_list) <= 1:
-                continue
-
-            # 按期望开始时间排序
-            sorted_usage = sorted(usage_list, key=lambda x: x['desired_start'])
-
-            for i in range(len(sorted_usage) - 1):
-                current = sorted_usage[i]
-                next_usage = sorted_usage[i + 1]
-
-                if current['desired_end'] > next_usage['desired_start']:
-                    conflicts.append({
-                        'elevator_id': eid,
-                        'conflict_tasks': [current['task_id'], next_usage['task_id']],
-                        'conflict_robots': [current['robot_id'], next_usage['robot_id']],
-                        'time_overlap': current['desired_end'] - next_usage['desired_start']
-                    })
-
-        return conflicts
-
-    def _resolve_conflicts_by_reselection(self, conflicts: List[Dict], assignments: Dict,
-                                          all_path_options: Dict, current_time: float, sim_elevators: Dict) -> bool:
-        """
-        通过路径重选解决冲突
-        返回是否成功更新
-        """
-        updated = False
-
-        for conflict in conflicts:
-            elevator_id = conflict['elevator_id']
-            conflict_tasks = conflict['conflict_tasks']
-
-            print(f"解决电梯{elevator_id}冲突: 任务{conflict_tasks}")
-
-            # 为冲突的任务寻找替代路径
-            for task_id in conflict_tasks:
-                if task_id not in assignments:
-                    continue
-
-                current_assignment = assignments[task_id]
-                current_path_type = current_assignment['path_type']
-
-                # 如果当前就是电梯路径，尝试找替代路径
-                if current_path_type != 'stair' and current_assignment['path_info']['eid'] == elevator_id:
-                    alternatives = self._find_alternative_paths(
-                        task_id, current_assignment, all_path_options, current_time, sim_elevators
-                    )
-
-                    if alternatives:
-                        best_alternative = min(alternatives, key=lambda x: x['actual_time'])
-
-                        if best_alternative['actual_time'] < current_assignment['path_info']['actual_time']:
-                            # 更新为更好的路径
-                            new_assignment = {
-                                'robot': current_assignment['robot'],
-                                'path_type': best_alternative['path_type'],
-                                'path_info': best_alternative
-                            }
-                            assignments[task_id] = new_assignment
-                            updated = True
-                            print(f"  任务{task_id}: {current_path_type} -> {best_alternative['path_type']}, "
-                                  f"时间: {current_assignment['path_info']['actual_time']:.1f}s -> {best_alternative['actual_time']:.1f}s")
-
-        return updated
-
-    def _resolve_conflicts_priority(self, all_conflicts: Dict, assignments: Dict,
-                                    all_path_options: Dict, current_time: float, sim_elevators: Dict) -> bool:
-        """
-        改进的优先级解决冲突：短任务优先，相同则按任务ID
-        """
-        updated = False
-
-        for elevator_id, conflict_groups in all_conflicts.items():
-            for conflict_group in conflict_groups:
-                task_ids = [req['task_id'] for req in conflict_group]
-                print(f"解决电梯{elevator_id}冲突: 任务{task_ids}")
-
-                # 改进的排序：先按持续时间，再按任务ID
-                sorted_conflicts = sorted(conflict_group,
-                                          key=lambda x: (x['duration'], x['task_id']))
-
-                # 第一个任务获得电梯使用权
-                winner = sorted_conflicts[0]
-                winners = [winner]
-                losers = sorted_conflicts[1:]
-
-                print(f"  获胜任务: 任务{winner['task_id']}({winner['duration']:.1f}s)")
-                print(f"  需调整任务: {[req['task_id'] for req in losers]}")
-
-                # 为失败的任务寻找替代路径
-                for loser in losers:
-                    task_id = loser['task_id']
-                    success = self._try_alternative_path(task_id, assignments,
-                                                         all_path_options, current_time,
-                                                         sim_elevators, elevator_id)
-                    if success:
-                        updated = True
-
-        return updated
-
-    def _resolve_conflicts_and_assign(self, all_path_options: Dict, tasks: List[Task], current_time: float) -> Dict:
-        """
-        改进的冲突解决算法：支持多任务同时冲突
-        """
-        print("开始冲突解决和路径重选...")
-
-        # 创建状态副本用于模拟
-        sim_elevators = {eid: elevator.copy() for eid, elevator in self.elevators.items()}
-
-        # 初始分配：每个任务选择最优路径
-        current_assignments = {}
-        for task_id, options in all_path_options.items():
-            if options:
-                current_assignments[task_id] = options[0]  # 选择基础时间最短的
-
-        max_iterations = 10
-        for iteration in range(max_iterations):
-            print(f"\n第 {iteration + 1} 轮冲突检测...")
-
-            # 检测所有电梯冲突（改进版本）
-            all_conflicts = self._detect_all_elevator_conflicts(current_assignments, current_time, sim_elevators)
-
-            if not all_conflicts:
-                print("✅ 未发现电梯冲突，分配完成")
-                break
-
-            print(f"发现 {len(all_conflicts)} 组电梯冲突")
-
-            # 解决冲突：按优先级处理
-            # updated = self._resolve_conflicts_priority(all_conflicts, current_assignments,
-            #                                            all_path_options, current_time, sim_elevators)
-            updated = self._resolve_conflicts_min_delta(all_conflicts, current_assignments,
-                                                        all_path_options, current_time, sim_elevators)
-
-            if not updated:
-                print("⚠️ 无法解决所有冲突，尝试强制解决方案")
-                # 强制将部分任务切换到楼梯
-                self._force_resolve_conflicts(all_conflicts, current_assignments, all_path_options)
-                break
-
-            if iteration == max_iterations - 1:
-                print("⚠️ 达到最大迭代次数，使用当前分配")
-
-        return current_assignments
-
     def _detect_all_elevator_conflicts(self, assignments: Dict, current_time: float, sim_elevators: Dict) -> Dict[
         str, List]:
         """
@@ -646,9 +515,142 @@ class BatchScheduler:
                 all_conflicts[eid].append(conflict_group)
 
         return all_conflicts
-    
-    
 
+    # 省略
+    def _detect_elevator_conflicts(self, assignments: Dict, current_time: float, sim_elevators: Dict) -> List[Dict]:
+        """
+        检测电梯冲突
+        返回冲突列表
+        """
+        conflicts = []
+
+        # 按任务收集电梯使用信息
+        elevator_usage = defaultdict(list)
+
+        for task_id, assignment in assignments.items():
+            path_info = assignment['path_info']
+            if path_info['type'] == 'elevator':
+                eid = path_info['eid']
+                robot = assignment['robot']
+
+                # 计算机器人到达电梯的时间
+                arrival_at_elevator = current_time + path_info['before']
+                desired_start = max(arrival_at_elevator, current_time)
+                duration = path_info['between']
+
+                elevator_usage[eid].append({
+                    'task_id': task_id,
+                    'robot_id': robot.id,
+                    'desired_start': desired_start,
+                    'duration': duration,
+                    'desired_end': desired_start + duration
+                })
+
+        # 检测每个电梯的冲突
+        for eid, usage_list in elevator_usage.items():
+            if len(usage_list) <= 1:
+                continue
+
+            # 按期望开始时间排序
+            sorted_usage = sorted(usage_list, key=lambda x: x['desired_start'])
+
+            for i in range(len(sorted_usage) - 1):
+                current = sorted_usage[i]
+                next_usage = sorted_usage[i + 1]
+
+                if current['desired_end'] > next_usage['desired_start']:
+                    conflicts.append({
+                        'elevator_id': eid,
+                        'conflict_tasks': [current['task_id'], next_usage['task_id']],
+                        'conflict_robots': [current['robot_id'], next_usage['robot_id']],
+                        'time_overlap': current['desired_end'] - next_usage['desired_start']
+                    })
+
+        return conflicts
+
+    # 省略
+    def _resolve_conflicts_by_reselection(self, conflicts: List[Dict], assignments: Dict,
+                                          all_path_options: Dict, current_time: float, sim_elevators: Dict) -> bool:
+        """
+        通过路径重选解决冲突
+        返回是否成功更新
+        """
+        updated = False
+
+        for conflict in conflicts:
+            elevator_id = conflict['elevator_id']
+            conflict_tasks = conflict['conflict_tasks']
+
+            print(f"解决电梯{elevator_id}冲突: 任务{conflict_tasks}")
+
+            # 为冲突的任务寻找替代路径
+            for task_id in conflict_tasks:
+                if task_id not in assignments:
+                    continue
+
+                current_assignment = assignments[task_id]
+                current_path_type = current_assignment['path_type']
+
+                # 如果当前就是电梯路径，尝试找替代路径
+                if current_path_type != 'stair' and current_assignment['path_info']['eid'] == elevator_id:
+                    alternatives = self._find_alternative_paths(
+                        task_id, current_assignment, all_path_options, current_time, sim_elevators
+                    )
+
+                    if alternatives:
+                        best_alternative = min(alternatives, key=lambda x: x['actual_time'])
+
+                        if best_alternative['actual_time'] < current_assignment['path_info']['actual_time']:
+                            # 更新为更好的路径
+                            new_assignment = {
+                                'robot': current_assignment['robot'],
+                                'path_type': best_alternative['path_type'],
+                                'path_info': best_alternative
+                            }
+                            assignments[task_id] = new_assignment
+                            updated = True
+                            print(f"  任务{task_id}: {current_path_type} -> {best_alternative['path_type']}, "
+                                  f"时间: {current_assignment['path_info']['actual_time']:.1f}s -> {best_alternative['actual_time']:.1f}s")
+
+        return updated
+
+    # 省略
+    def _resolve_conflicts_priority(self, all_conflicts: Dict, assignments: Dict,
+                                    all_path_options: Dict, current_time: float, sim_elevators: Dict) -> bool:
+        """
+        改进的优先级解决冲突：短任务优先，相同则按任务ID
+        """
+        updated = False
+
+        for elevator_id, conflict_groups in all_conflicts.items():
+            for conflict_group in conflict_groups:
+                task_ids = [req['task_id'] for req in conflict_group]
+                print(f"解决电梯{elevator_id}冲突: 任务{task_ids}")
+
+                # 改进的排序：先按持续时间，再按任务ID
+                sorted_conflicts = sorted(conflict_group,
+                                          key=lambda x: (x['duration'], x['task_id']))
+
+                # 第一个任务获得电梯使用权
+                winner = sorted_conflicts[0]
+                winners = [winner]
+                losers = sorted_conflicts[1:]
+
+                print(f"  获胜任务: 任务{winner['task_id']}({winner['duration']:.1f}s)")
+                print(f"  需调整任务: {[req['task_id'] for req in losers]}")
+
+                # 为失败的任务寻找替代路径
+                for loser in losers:
+                    task_id = loser['task_id']
+                    success = self._try_alternative_path(task_id, assignments,
+                                                         all_path_options, current_time,
+                                                         sim_elevators, elevator_id)
+                    if success:
+                        updated = True
+
+        return updated
+
+    # 省略
     def _find_best_alternative_path(self, task_id: int, current_assignment: Dict,
                                     all_path_options: Dict, current_time: float,
                                     sim_elevators: Dict, exclude_elevator: str) -> Dict:
@@ -709,6 +711,7 @@ class BatchScheduler:
                             print(
                                 f"  强制切换: 任务{task_id} -> 楼梯, 时间: {stair_option['path_info']['actual_time']:.1f}s")
 
+    # 省略
     def _try_alternative_path(self, task_id: int, assignments: Dict,
                               all_path_options: Dict, current_time: float,
                               sim_elevators: Dict, exclude_elevator: str) -> bool:
@@ -843,6 +846,7 @@ class BatchScheduler:
 
         return None
 
+    # 省略
     def _find_alternative_paths(self, task_id: int, current_assignment: Dict,
                                 all_path_options: Dict, current_time: float, sim_elevators: Dict) -> List[Dict]:
         """
@@ -968,10 +972,6 @@ class BatchScheduler:
     # 原有的单任务分配方法保持不变
     def find_feasible_robots(self, task, current_time):
         return [r for r in self.robots if r.skill == task.skill]
-
-    def assign_task(self, task, current_time):
-        # ... 原有代码保持不变 ...
-        pass
 
 
 # ============================================================
@@ -1151,4 +1151,114 @@ def input_task(user_input):
 
 
 if __name__ == "__main__":
-    start_batch_scheduler()
+    # start_batch_scheduler()
+    # eid = "3_E1"
+    # # eid_1 = "2_E1"
+    # eid_1 = None
+    # forbidden_elevator_id = "3_E1"
+    # # 存储时：
+    # elevator_id = f"{eid}|{eid_1}" if eid_1 is not None else eid
+    #
+    # # 判断时：
+    # parts = elevator_id.split("|")  # 可能是 ["eid"] 或 ["eid", "eid_1"]
+    # if forbidden_elevator_id in parts:
+    #     print("Forbidden elevator detected!")
+    #     print(parts[0])
+    #     print(len(parts))
+    #     if eid == elevator_id:
+    #         print("yes")
+    # import networkx as nx
+    #
+    # # 创建一个示例图
+    # G = nx.Graph()
+    # G.add_edges_from([
+    #     (1, 2), (1, 3), (2, 3),  # 团 [1, 2, 3]
+    #     (2, 4), (3, 4),  # 扩展成 [1, 2, 3, 4]? 不行，因为 1 和 4 不相连
+    #     (4, 5)  # 另一个团 [4, 5]
+    # ])
+    #
+    # # 找出所有极大团
+    # maximal_cliques = list(nx.find_cliques(G))
+    #
+    # print("所有极大团:", maximal_cliques)
+
+    import networkx as nx
+    from collections import defaultdict
+
+    # 假设 conflicts 是一个列表，每个元素是一个字典，包含 elevator_id, usage1, usage2, overlap_time
+    conflicts = [
+        # 示例数据（实际数据应从你的输入获取）
+        {
+            "elevator_id": "E1",
+            "usage1": {"robot_id": "R1", "start": 0, "end": 10},
+            "usage2": {"robot_id": "R2", "start": 5, "end": 15},
+            "overlap_time": 5
+        },
+        {
+            "elevator_id": "E1",
+            "usage1": {"robot_id": "R2", "start": 5, "end": 15},
+            "usage2": {"robot_id": "R3", "start": 10, "end": 20},
+            "overlap_time": 5
+        },
+        {
+            "elevator_id": "E2",
+            "usage1": {"robot_id": "R4", "start": 0, "end": 10},
+            "usage2": {"robot_id": "R5", "start": 5, "end": 15},
+            "overlap_time": 5
+        }
+    ]
+
+    # 按 elevator_id 分组冲突，并存储极大团和对应的 conflict 列表
+    elevator_conflicts = defaultdict(list)
+
+    for conflict in conflicts:
+        elevator_id = conflict["elevator_id"]
+        elevator_conflicts[elevator_id].append(conflict)
+
+    # 最终结果：存储每个 elevator_id 的极大团及其对应的 conflict 列表
+    result = {}
+
+    for elevator_id, conflict_list in elevator_conflicts.items():
+        # 构建冲突图
+        G = nx.Graph()
+
+        # 记录每个 robot_id 对应的 conflict 列表（用于后续关联极大团）
+        robot_to_conflicts = defaultdict(list)
+
+        for conflict in conflict_list:
+            robot1 = conflict["usage1"]["robot_id"]
+            robot2 = conflict["usage2"]["robot_id"]
+
+            # 添加边
+            G.add_edge(robot1, robot2)
+
+            # 记录 robot_id 对应的 conflict（用于后续关联极大团）
+            robot_to_conflicts[robot1].append(conflict)
+            robot_to_conflicts[robot2].append(conflict)
+
+        # 找出所有极大团
+        maximal_cliques = list(nx.find_cliques(G))
+        print(maximal_cliques)
+
+        # 关联极大团和对应的 conflict 列表
+        clique_conflicts = []
+        for clique in maximal_cliques:
+            related_conflicts = []
+            for robot in clique:
+                related_conflicts.extend(robot_to_conflicts[robot])
+            clique_conflicts.append({
+                "clique": clique,
+                "conflicts": related_conflicts  # 允许重复
+            })
+
+        # 存储结果
+        result[elevator_id] = {
+            "graph": G,  # 可选：存储图对象（如果需要后续分析）
+            "maximal_cliques": clique_conflicts
+        }
+
+    # 输出结果
+    import pprint
+
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(result)
