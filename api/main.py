@@ -48,6 +48,11 @@ class AssignmentOutput(BaseModel):
     estimated_time: float # 预估完成时间（秒）
 
 
+@app.get("/")
+async def root():
+    return {"message": "Robot Path API is alive!", "docs": "/docs"}
+
+
 @app.post("/schedule-tasks", response_model=List[AssignmentOutput])
 async def schedule_tasks(batch_input: BatchTaskInput):
     """
