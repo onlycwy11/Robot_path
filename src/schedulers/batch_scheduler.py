@@ -386,13 +386,13 @@ class Robot:
 
 
 class Task:
-    def __init__(self, tid: int, skill: str, start: str, target: str, priority: str = "3",
+    def __init__(self, tid: int, skill: str, start: str, target: str, priority: int = 3,
                  pickup_duration: float = 0.0, deliver_duration: float = 0.0):
         self.id = tid
         self.skill = skill
         self.start = start  # 取药点
         self.target = target  # 送药点
-        self.priority = int(priority)
+        self.priority = priority
         self.pickup_duration = pickup_duration
         self.deliver_duration = deliver_duration  # 任务持续时间
 
@@ -2086,7 +2086,7 @@ def start_interactive_scheduler():
             batch_tasks = []
             for i in range(0, len(parts), 4):
                 skill = parts[i]
-                priority = parts[i + 1]
+                priority = int(parts[i + 1])
                 start = parts[i + 2]
                 target = parts[i + 3]
                 batch_tasks.append(Task(task_counter, skill, start, target, priority))
