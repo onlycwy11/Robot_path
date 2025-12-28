@@ -2088,7 +2088,6 @@ def start_interactive_scheduler():
                 skill = parts[i]
                 priority = int(parts[i + 1])
                 start = parts[i + 2]
-
                 target = parts[i + 3]
                 batch_tasks.append(Task(task_counter, skill, start, target, priority))
                 task_counter += 1
