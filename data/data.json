@@ -51,7 +51,7 @@
     },
     {
       "elevatorName": "3号楼电梯一",
-      "buildingName": "1号楼",
+      "buildingName": "3号楼",
       "averageSpeed": 2.0,
       "doorOperationTime": 10,
       "position": { "x": 165198, "y": 15000, "z": 110 },
@@ -59,7 +59,7 @@
     },
     {
       "elevatorName": "3号楼电梯二",
-      "buildingName": "1号楼",
+      "buildingName": "3号楼",
       "averageSpeed": 2.0,
       "doorOperationTime": 10,
       "position": { "x": 168198, "y": 15000, "z": 110 },

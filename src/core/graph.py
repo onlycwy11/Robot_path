@@ -835,73 +835,275 @@ def add_floor9(graph, stair_length_1, stair_length_2, v_l, v_s):
 # ============================================================
 # 在 __main__ 中添加测试
 if __name__ == "__main__":
-    stair_graph, add_1E1_graph, add_1E2_graph, add_2E1_graph, add_2E2_graph, add_3E1_graph, add_3E2_graph, final_graph = initial_six_graphs(
-        speed_land=1.5, speed_stair=0.5)
-    # # Example pathfinding
-    # stair
-    path_stair, cost_stair = stair_graph.dijkstra("1_1_Left_2", "8_2_B")
-    print("\nStair Shortest path:", path_stair)
-    print("Stair Total travel time:", round(cost_stair, 2), "s")
-    # 1E1
-    # path_1E1, cost_1E1 = add_1E1_graph.dijkstra("1_1_Left_2", "6_3_B")
-    # print("\n1E1 Shortest path:", path_1E1)
-    # print("1E1 Total travel time:", round(cost_1E1, 2), "s")
-
-    # result_1E1 = add_3E1_graph.dijkstra_extra("1_1_Left_1", "1_1_B")
-    # path1E1 = result_1E1["path"]
-    # time_1E1 = result_1E1["total_time"]
-    # before_1E1 = result_1E1["segments"]["before"]
-    # after_1E1 = result_1E1["segments"]["after"]
-    # between_1E1 = result_1E1["segments"]["between"]
-    # start_1E1 = result_1E1["E_nodes"][0]
-    # end_1E1 = result_1E1["E_nodes"][1]
-    # print(result_1E1["path"])
-    # print(result_1E1["total_time"])
-    # print(result_1E1["segments"])
-    # print(result_1E1["segments"]["before"])
-    # print(result_1E1["segments"]["between"])
-    # print(result_1E1["segments"]["after"])
-    # print(result_1E1["E_nodes"])
-    # print(result_1E1["E_nodes"][0])
-    # print(result_1E1["E_nodes"][1])
-
-    # 1E2
-    # path_1E2, cost_1E2 = add_1E2_graph.dijkstra("1_1_Left_2", "6_3_B")
-    # print("\n1E2 Shortest path:", path_1E2)
-    # print("1E2 Total travel time:", round(cost_1E2, 2), "s")
-    # #2E1
-    # path_2E1, cost_2E1 = add_2E1_graph.dijkstra("1_1_Left_2", "6_3_B")
-    # print("\n2E1 Shortest path:", path_2E1)
-    # print("2E1 Total travel time:", round(cost_2E1, 2), "s")
-    # #2E2
-    # path_2E2, cost_2E2 = add_2E2_graph.dijkstra("1_1_Left_2", "6_3_B")
-    # print("\n2E2 Shortest path:", path_2E2)
-    # print("2E2 Total travel time:", round(cost_2E2, 2), "s")
-    # 3E1
-    result = add_3E1_graph.dijkstra_extra("1_1_Left_1", "4_3_A")
-    print(add_3E1_graph.edges["4_3_E1"])
-    path_3E1, cost_3E1, E_node = result["path"], result["total_time"], result["E_nodes"]
-    print("\n3E1 Shortest path:", path_3E1)
-    print("3E1 Total travel time:", cost_3E1, "s")
-    print(f"E_node: {E_node}")
-    # 3E2
-    path_3E2, cost_3E2 = add_3E2_graph.dijkstra("1_1_Left_2", "8_2_B")
-    print("\n3E2 Shortest path:", path_3E2)
-    print("3E2 Total travel time:", round(cost_3E2, 2), "s")
-    # #total_path
-    # path_total, cost_total = final_graph.dijkstra("1_1_Left_2", "6_3_B")
-    # print("\nTotal Shortest path:", path_total)
-    # print("Total Total travel time:", round(cost_total, 2), "s")
-
-    # # 测试第二短路径
-    # start = "1_1_Left_2"
-    # end = "6_3_B"
+    # stair_graph, add_1E1_graph, add_1E2_graph, add_2E1_graph, add_2E2_graph, add_3E1_graph, add_3E2_graph, final_graph = initial_six_graphs(
+    #     speed_land=1.5, speed_stair=0.5)
+    # # # Example pathfinding
+    # # stair
+    # path_stair, cost_stair = stair_graph.dijkstra("1_1_Left_2", "8_2_B")
+    # print("\nStair Shortest path:", path_stair)
+    # print("Stair Total travel time:", round(cost_stair, 2), "s")
+    # # 1E1
+    # # path_1E1, cost_1E1 = add_1E1_graph.dijkstra("1_1_Left_2", "6_3_B")
+    # # print("\n1E1 Shortest path:", path_1E1)
+    # # print("1E1 Total travel time:", round(cost_1E1, 2), "s")
     #
-    # # 使用新方法
-    # routes = graph.find_alternative_routes(start, end, 3)
+    # # result_1E1 = add_3E1_graph.dijkstra_extra("1_1_Left_1", "1_1_B")
+    # # path1E1 = result_1E1["path"]
+    # # time_1E1 = result_1E1["total_time"]
+    # # before_1E1 = result_1E1["segments"]["before"]
+    # # after_1E1 = result_1E1["segments"]["after"]
+    # # between_1E1 = result_1E1["segments"]["between"]
+    # # start_1E1 = result_1E1["E_nodes"][0]
+    # # end_1E1 = result_1E1["E_nodes"][1]
+    # # print(result_1E1["path"])
+    # # print(result_1E1["total_time"])
+    # # print(result_1E1["segments"])
+    # # print(result_1E1["segments"]["before"])
+    # # print(result_1E1["segments"]["between"])
+    # # print(result_1E1["segments"]["after"])
+    # # print(result_1E1["E_nodes"])
+    # # print(result_1E1["E_nodes"][0])
+    # # print(result_1E1["E_nodes"][1])
     #
-    # # 单独获取第二短路径
-    # second_path, second_cost = graph.get_second_shortest(start, end)
-    # if second_path:
-    #     print(f"\n第二短路径: {second_cost:.2f}秒")
-    #     print(f"路径: {' → '.join(second_path)}")
+    # # 1E2
+    # # path_1E2, cost_1E2 = add_1E2_graph.dijkstra("1_1_Left_2", "6_3_B")
+    # # print("\n1E2 Shortest path:", path_1E2)
+    # # print("1E2 Total travel time:", round(cost_1E2, 2), "s")
+    # # #2E1
+    # # path_2E1, cost_2E1 = add_2E1_graph.dijkstra("1_1_Left_2", "6_3_B")
+    # # print("\n2E1 Shortest path:", path_2E1)
+    # # print("2E1 Total travel time:", round(cost_2E1, 2), "s")
+    # # #2E2
+    # # path_2E2, cost_2E2 = add_2E2_graph.dijkstra("1_1_Left_2", "6_3_B")
+    # # print("\n2E2 Shortest path:", path_2E2)
+    # # print("2E2 Total travel time:", round(cost_2E2, 2), "s")
+    # # 3E1
+    # result = add_3E1_graph.dijkstra_extra("1_1_Left_1", "4_3_A")
+    # print(add_3E1_graph.edges["4_3_E1"])
+    # path_3E1, cost_3E1, E_node = result["path"], result["total_time"], result["E_nodes"]
+    # print("\n3E1 Shortest path:", path_3E1)
+    # print("3E1 Total travel time:", cost_3E1, "s")
+    # print(f"E_node: {E_node}")
+    # # 3E2
+    # path_3E2, cost_3E2 = add_3E2_graph.dijkstra("1_1_Left_2", "8_2_B")
+    # print("\n3E2 Shortest path:", path_3E2)
+    # print("3E2 Total travel time:", round(cost_3E2, 2), "s")
+    # # #total_path
+    # # path_total, cost_total = final_graph.dijkstra("1_1_Left_2", "6_3_B")
+    # # print("\nTotal Shortest path:", path_total)
+    # # print("Total Total travel time:", round(cost_total, 2), "s")
+    #
+    # # # 测试第二短路径
+    # # start = "1_1_Left_2"
+    # # end = "6_3_B"
+    # #
+    # # # 使用新方法
+    # # routes = graph.find_alternative_routes(start, end, 3)
+    # #
+    # # # 单独获取第二短路径
+    # # second_path, second_cost = graph.get_second_shortest(start, end)
+    # # if second_path:
+    # #     print(f"\n第二短路径: {second_cost:.2f}秒")
+    # #     print(f"路径: {' → '.join(second_path)}")
+
+    import networkx as nx
+    import matplotlib
+    matplotlib.use('Agg')  # 必须在导入 pyplot 之前设置
+    import matplotlib.pyplot as plt
+
+    # 设置支持中文的字体
+    plt.rcParams['font.sans-serif'] = ['SimHei']  # 使用黑体
+    plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+
+    # 1. 创建一个有向图
+    graph = nx.DiGraph()
+
+    def generate_edges(current_building, v_l, v_s, up_building="", right_building="", stair_length_1=0.0,
+                       stair_length_2=0.0):
+        edges = []
+
+        # 添加基础边
+        edges.append((current_building + "Left_2", current_building + "A", (60 - 3) / v_l, False))
+        edges.append((current_building + "Left_2", current_building + "Left_1", (113 - 92) / v_l, False))
+        edges.append((current_building + "Left_1", current_building + "Left_2", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Ar", current_building + "Left_1", (60 - 3) / v_l, False))
+        edges.append((current_building + "Ar", current_building + "A", (113 - 92) / v_l, False))
+        edges.append((current_building + "A", current_building + "Ar", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Br", current_building + "B", (113 - 92) / v_l, False))
+        edges.append((current_building + "B", current_building + "Br", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Cr", current_building + "C", (113 - 92) / v_l, False))
+        edges.append((current_building + "C", current_building + "Cr", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Dr", current_building + "D", (113 - 92) / v_l, False))
+        edges.append((current_building + "D", current_building + "Dr", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Er", current_building + "E", (113 - 92) / v_l, False))
+        edges.append((current_building + "E", current_building + "Er", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Fr", current_building + "F", (113 - 92) / v_l, False))
+        edges.append((current_building + "F", current_building + "Fr", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Gr", current_building + "G", (113 - 92) / v_l, False))
+        edges.append((current_building + "G", current_building + "Gr", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "Ewr", current_building + "Ew", (113 - 92) / v_l, False))
+        edges.append((current_building + "Ew", current_building + "Ewr", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "A", current_building + "B", (113 - 92) / v_l, False))
+        edges.append((current_building + "Br", current_building + "Ar", (113 - 92) / v_l, False))
+
+        edges.append((current_building + "A", current_building + "B", (75 - 60) / v_l, False))
+        edges.append((current_building + "Br", current_building + "Ar", (75 - 60) / v_l, False))
+
+        edges.append((current_building + "B", current_building + "Er", (77 - 75) / v_l, False))
+        edges.append((current_building + "E", current_building + "Br", (77 - 75) / v_l, False))
+
+        edges.append((current_building + "Stair1_1", current_building + "E", (93 - 77) / v_l, False))
+        edges.append((current_building + "Stair1_1", current_building + "Stair1_2", (122 - 93) / v_l, False))
+        edges.append((current_building + "Stair1_2", current_building + "Stair1_1", (122 - 93) / v_l,
+                       False))
+        edges.append((current_building + "Cr", current_building + "Stair1_2", (143 - 122) / v_l, False))
+        edges.append((current_building + "Cr", current_building + "E", (143 - 77) / v_l, False))
+
+        edges.append((current_building + "Er", current_building + "Stair1_2", (122 - 77 + 113 - 92) / v_l,
+                       False))
+        edges.append((current_building + "Er", current_building + "C", (153 - 77) / v_l, False))
+
+        edges.append((current_building + "F", current_building + "Cr", (200 - 143) / v_l, False))
+        edges.append((current_building + "C", current_building + "Fr", (200 - 143) / v_l, False))
+
+        edges.append((current_building + "Fr", current_building + "D", (220 - 200) / v_l, False))
+        edges.append((current_building + "Dr", current_building + "F", (220 - 200) / v_l, False))
+
+        edges.append((current_building + "G", current_building + "Dr", (293 - 220) / v_l, False))
+        edges.append((current_building + "D", current_building + "Gr", (293 - 220) / v_l, False))
+
+        edges.append((current_building + "Stair2_1", current_building + "G", (380 - 293) / v_l, False))
+
+        edges.append((current_building + "Gr", current_building + "E1", (390 - 293 + 150 - 100) / v_l,
+                       False))  # 380
+        edges.append((current_building + "Gr", current_building + "E2", (400 - 293 + 150 - 100) / v_l,
+                       False))  # 410
+        edges.append((current_building + "Gr", current_building + "Stair2_2", (380 - 293 + 199 - 100) / v_l,
+                       False))
+        edges.append((current_building + "Gr", current_building + "Right_2", (433 - 293) / v_l, False))
+
+        edges.append((current_building + "E1", current_building + "G", (390 - 293 + 150 - 110) / v_l,
+                       False))  # 380
+        edges.append((current_building + "E2", current_building + "G", (400 - 293 + 150 - 110) / v_l,
+                       False))  # 410
+
+        edges.append((current_building + "Right_1", current_building + "G", (433 - 293) / v_l, False))
+        edges.append((current_building + "Right_1", current_building + "E1", (433 - 380 + 150 - 112) / v_l,
+                       False))
+        edges.append((current_building + "Right_1", current_building + "E2", (433 - 410 + 150 - 112) / v_l,
+                       False))
+        edges.append((current_building + "Right_1", current_building + "Stair2_2", (433 - 380 + 167 - 100) / v_l,
+                       False))
+
+        edges.append((current_building + "Right_2", current_building + "Right_1", (113 - 92) / v_l,
+                       False))
+        edges.append((current_building + "Right_1", current_building + "Right_2", (113 - 92) / v_l,
+                       False))
+
+        # 楼梯连接（如果存在上层楼栋）
+        if up_building:
+            edges.append((up_building + "Stair1_1", current_building + "Stair1_1", stair_length_1 / v_s, False))
+            edges.append((current_building + "Stair1_2", up_building + "Stair1_2", stair_length_1 / v_s, False))
+            edges.append((up_building + "Stair2_1", current_building + "Stair2_1", stair_length_2 / v_s, False))
+            edges.append((current_building + "Stair2_2", up_building + "Stair2_2", stair_length_2 / v_s, False))
+
+        # 楼栋间连接（如果存在右侧楼栋且当前是1号楼）
+        if current_building.startswith("1_") and right_building:
+            edges.append((right_building + "Left_1", current_building + "Right_1", 200 / v_l, False))
+            edges.append((current_building + "Right_2", right_building + "Left_2", 200 / v_l, False))
+            edges.append((right_building + "Left_1", right_building + "Left_2", 200 / v_l, True))  # 双向边
+
+        # 返回边列表（只包含必要信息：src, dst, weight）
+        # 忽略 bidirectional 参数，因为 NetworkX 的 add_edge 本身支持双向通过两次调用或设置 'bidirectional' 属性（但这里我们简化）
+        # 如果你需要双向边，可以添加两次（如 (src, dst) 和 (dst, src)）
+        simplified_edges = [(src, dst, weight) for src, dst, weight, _ in edges]  # 实际上我们忽略了方向性存储，但保留原始信息
+        # 但为了严格匹配，我们可以展开双向边
+        expanded_edges = []
+        for src, dst, weight, bidirectional in edges:
+            expanded_edges.append((src, dst, weight))
+            if bidirectional:
+                expanded_edges.append((dst, src, weight))
+
+        return expanded_edges
+
+    # 2. 添加节点（根据代码中的命名规则）
+    # 假设当前楼栋是 "1_"（1号楼）
+    current_building = "1_1_"
+    nodes = [
+        "Left_2", "Left_1", "Ar", "A", "Br", "B", "Cr", "C", "Dr", "D", "Er", "E", "Fr", "F", "Gr", "G", "Ewr", "Ew",
+        "Stair1_1", "Stair1_2", "Stair2_1", "Stair2_2", "E1", "E2", "Right_1", "Right_2"
+    ]
+
+    # 给图添加节点，节点名前加上楼栋前缀
+    for node in nodes:
+        graph.add_node(current_building + node)
+
+    # 3. 添加边（根据代码中的逻辑，简化权重计算，直接用固定值或公式）
+    v_l = 1.0  # 假设平地速度为1.0单位/秒
+    v_s = 0.5  # 假设楼梯速度为0.5单位/秒
+
+    # 示例调用
+    up_building = "2_1_"  # 假设有上层楼栋
+    right_building = "1_2_"  # 假设有右侧楼栋
+    stair_length_1 = math.sqrt((175 - 150) ** 2 + (1.76 - 1.10) ** 2) + math.sqrt((175 - 150) ** 2 + (3.5 - 2.07) ** 2)
+    stair_length_2 = math.sqrt((405.39 - 380.67) ** 2 + (1.76 - 1.10) ** 2) + math.sqrt(
+        (405.39 - 380.67) ** 2 + (3.5 - 2.07) ** 2)
+
+    edges = generate_edges(current_building, v_l, v_s, up_building, right_building, stair_length_1, stair_length_2)
+
+    # 打印部分边作为示例
+    for edge in edges:  # 只打印前20条边
+        print(edge)
+
+    # 示例边（这里只添加部分边，你可以根据实际需求补充完整）
+    # edges = [
+    #     ("Left_2", "A", (60 - 3) / v_l),
+    #     ("Left_2", "Left_1", (113 - 92) / v_l),
+    #     ("A", "B", (75 - 60) / v_l),
+    #     ("Stair1_1", "Stair1_2", (122 - 93) / v_l),
+    #     ("Stair2_1", "G", (380 - 293) / v_l),
+    #     # ... 补充其他边
+    # ]
+
+    # 给图添加边，边名也加上楼栋前缀
+    for src, dst, weight in edges:
+        graph.add_edge(src, dst, weight=weight)
+
+    # 4. 输出节点列表
+    print("=== 节点列表 ===")
+    for node in graph.nodes():
+        print(node)
+    print("---------------")
+
+    # 5. 绘制图形
+    plt.figure(figsize=(12, 8))
+
+    # 提取节点和边的信息用于绘图
+    pos = nx.spring_layout(graph)  # 使用弹簧布局算法
+    edge_labels = {(src, dst): f"{data['weight']:.2f}" for src, dst, data in graph.edges(data=True)}
+
+    # 画节点
+    nx.draw_networkx_nodes(graph, pos, node_size=500, node_color="skyblue")
+
+    # 画边
+    nx.draw_networkx_edges(graph, pos, edgelist=graph.edges(), arrowstyle="->", arrowsize=10)
+
+    # 画节点标签
+    nx.draw_networkx_labels(graph, pos, font_size=8)
+
+    # 画边标签（权重）
+    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=8)
+
+    # 6. 保存图片（避免 plt.show() 的兼容性问题）
+    plt.title("1号楼图结构可视化")
+    plt.savefig("building_graph.png", dpi=300, bbox_inches='tight')
+    print("图形已保存为 building_graph.png")

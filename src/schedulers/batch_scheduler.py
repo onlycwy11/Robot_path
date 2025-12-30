@@ -25,6 +25,51 @@ robot_status = {}  # 存储每个机器人的实时状态
 simulated_elevator_reservations = {}  # 格式: {elevator_id: [reservation1, reservation2, ...]}
 
 
+class Stair:
+    """楼梯类，用于检测和管理楼梯超车、会车问题"""
+    def __init__(self, stair_id: str, building_num: int, floor_num: int):
+        self.id = stair_id  # 格式: "Stair1_1", "Stair2_2"等
+        self.building_num = building_num
+        self.floor_num = floor_num
+        self.usage_schedule = []  # (start_time, end_time, robot_id, direction)
+
+    def reserve(self, start_time: float, duration: float, robot_id: int, task_id: int):
+        """预约楼梯使用"""
+        end_time = start_time + duration
+        self.usage_schedule.append((start_time, end_time, robot_id, task_id))
+        self.usage_schedule.sort(key=lambda x: x[0])
+        print(f"[Stair {self.id} Reserved] R{robot_id} (Task{task_id}): {start_time:.2f}s - {end_time:.2f}s")
+
+    def check_availability(self, desired_start: float, duration: float) -> Tuple[bool, float, float]:
+        """
+        检查楼梯可用性
+        返回(是否可用, 实际开始时间, 等待时间)
+        """
+        desired_end = desired_start + duration
+
+        if not self.usage_schedule:
+            return True, desired_start, 0.0
+
+        # 检查当前时段是否有冲突
+        actual_start = desired_start
+        for scheduled_start, scheduled_end, robot_id, task_id in self.usage_schedule:
+            if actual_start + duration <= scheduled_start:
+                # 找到可用时间段
+                break
+            elif actual_start < scheduled_end:
+                # 有冲突，需要等待
+                actual_start = scheduled_end
+
+        wait_time = max(0, actual_start - desired_start)
+        return True, actual_start, wait_time
+
+    def copy(self):
+        """创建楼梯的深拷贝"""
+        new_stair = Stair(self.id, self.building_num, self.floor_num)
+        new_stair.usage_schedule = copy.deepcopy(self.usage_schedule)
+        return new_stair
+
+
 class Elevator:
     def __init__(self, eid: int, bldg_num: int, local_id: str, initial_floor: int = 1):
         self.id = eid
@@ -197,7 +242,10 @@ class Robot:
 
         def on_message(client, userdata, msg):
             try:
-                new_charge = float(msg.payload.decode())
+                # 解析JSON格式的电量数据
+                payload = json.loads(msg.payload.decode())
+                new_charge = float(payload["charge_level"])
+
                 if new_charge < 0:
                     new_charge = 0.0
                 elif new_charge > 100.0:
@@ -948,7 +996,8 @@ class BatchScheduler:
         """
         current_time = time.time() - self.start_time
         min_tasks_total_time = float('inf')  # 最小总耗时，初始为无穷大
-        initial_assignments = None  # 最优任务分配方案
+        # initial_assignments = None  # 最优任务分配方案
+        best_final_assignments = None
 
         print(f"\n=== 开始批量调度 {len(tasks)} 个任务 ===")
 
@@ -960,48 +1009,56 @@ class BatchScheduler:
             # 1. 执行初始任务分配 - 为每个任务找到技能匹配且时间最优的机器人
             i += 1
             print(f"正在尝试第 {i} 次初始任务分配...")
-            best_assignments, tasks_total_time = self._initial_assignment(perm_tasks, current_time)
+            # best_assignments, tasks_total_time = self._initial_assignment(perm_tasks, current_time)
+            #
+            # # 1.1 记录最优解
+            # if tasks_total_time < min_tasks_total_time:
+            #     min_tasks_total_time = tasks_total_time
+            #     initial_assignments = best_assignments
+            #
+            # print("\n")
 
-            # 1.1 记录最优解
+            # 1. 初始任务分配
+            initial_assignments, _ = self._initial_assignment(perm_tasks, current_time)
+
+            # 2. 检测电梯冲突
+            max_iterations = 10  # 防止无限循环
+            iteration = 0
+            final_assignments = initial_assignments.copy()
+
+            while iteration < max_iterations:
+                conflicts = self._detect_elevator_conflicts(final_assignments)
+
+                if not conflicts:
+                    print("未检测到电梯冲突")
+                    break
+
+                print(f"检测到 {len(conflicts)} 个电梯冲突")
+                # 3. 解决冲突（这里可以切换策略1或策略2）
+                final_assignments = self._resolve_conflicts(final_assignments, conflicts, strategy="strategy2")
+                iteration += 1
+
+            if iteration == max_iterations:
+                print(f"[警告] 达到最大迭代次数 {max_iterations}，但仍存在冲突")
+
+            # 4. 楼梯“超车”“会车”问题
+            final_assignments = self._resolve_stair_conflicts(final_assignments)
+
+            # 5. 记录最优解
+            tasks_total_time = self.calculate_tasks_total_time(final_assignments)
             if tasks_total_time < min_tasks_total_time:
                 min_tasks_total_time = tasks_total_time
-                initial_assignments = best_assignments
+                best_final_assignments = final_assignments
 
             print("\n")
 
-        # 1. 初始任务分配
-        # initial_assignments, tasks_total_time = self._initial_assignment(tasks, current_time)
-
-        # 2. 检测电梯冲突
-        max_iterations = 10  # 防止无限循环
-        iteration = 0
-        final_assignments = initial_assignments.copy()
-
-        while iteration < max_iterations:
-            conflicts = self._detect_elevator_conflicts(final_assignments)
-
-            if not conflicts:
-                print("未检测到电梯冲突")
-                break
-
-            print(f"检测到 {len(conflicts)} 个电梯冲突")
-            # 3. 解决冲突（这里可以切换策略1或策略2）
-            final_assignments = self._resolve_conflicts(final_assignments, conflicts, strategy="strategy2")
-            iteration += 1
-
-        if iteration == max_iterations:
-            print(f"[警告] 达到最大迭代次数 {max_iterations}，但仍存在冲突")
-
-        # 楼梯“超车”“会车”问题
-        final_assignments = self._resolve_stair_conflicts(final_assignments)
-
-        # 4. 执行调度
-        self._execute_assignments(final_assignments, current_time)
+        # 6. 执行调度
+        self._execute_assignments(best_final_assignments, current_time)
 
         # for robot in self.robots:
         #     print(robot.task_list)
 
-        return final_assignments
+        return best_final_assignments
 
     def _initial_assignment(self, tasks: List[Task], current_time: float) -> Tuple[List[dict], float]:
         """
@@ -1834,6 +1891,17 @@ class BatchScheduler:
                             stair_pairs.append((current_node, next_node))
 
         return resolved_assignments
+
+    def calculate_tasks_total_time(self, assignments: List[dict]):
+        tasks_total_time = 0.0
+        for assignment in assignments:
+            pick_path_info = assignment["pick_path_info"]
+            deliver_path_info = assignment["deliver_path_info"]
+
+            task_total_time = pick_path_info["actual_time"] + deliver_path_info["actual_time"]
+            tasks_total_time += task_total_time
+
+        return tasks_total_time
 
     def _execute_assignments(self, assignments: List[dict], current_time: float):
         """
