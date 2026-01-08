@@ -650,7 +650,8 @@ def select_best_path_with_elevator(
         add_3E1_graph,
         add_3E2_graph,
         elevators: dict,
-        current_time: float
+        current_time: float,
+        available_time: float
 ):
     global current_paths  # 全局变量，存储所有任务的路径信息
     path_results = {}  # 存储所有可能路径的结果
@@ -665,7 +666,7 @@ def select_best_path_with_elevator(
         if path_stair_pickup and not math.isinf(cost_stair_pickup):
             path_results["stair_1"] = {
                 "path": path_stair_pickup,
-                "start_time": current_time,
+                "start_time": available_time,
                 "actual_time": cost_stair_pickup,
                 "part_time_2": cost_stair_pickup,
                 "wait_time_2": 0.0,
@@ -687,7 +688,7 @@ def select_best_path_with_elevator(
     if path_stair_delivery and not math.isinf(cost_stair_delivery):
         path_results["stair_2"] = {
             "path": path_stair_delivery,
-            "start_time": current_time,
+            "start_time": available_time,
             "actual_time": cost_stair_delivery,
             "part_time_2": cost_stair_delivery,
             "wait_time_2": 0.0,
@@ -758,11 +759,11 @@ def select_best_path_with_elevator(
                             end_floor_2 = int(end_e2.split("_")[0])
 
                             # 检查第一部电梯可预约的时间段
-                            elev_start_1, elev_end_1, elev_ready_1 = elev_1.check_reserve(current_time, before,
+                            elev_start_1, elev_end_1, elev_ready_1 = elev_1.check_reserve(available_time, before,
                                                                                           between_1,
                                                                                           from_floor_1)
-                            wait_time_1 = max(elev_ready_1 - current_time - before, 0)
-                            part_time_1 = elev_end_1 - current_time
+                            wait_time_1 = max(elev_ready_1 - available_time - before, 0)
+                            part_time_1 = elev_end_1 - available_time
 
                             # 检查第二部电梯可预约的时间段
                             elev_start_2, elev_end_2, elev_ready_2 = elev_2.check_reserve(elev_end_1, transfer, between,
@@ -770,14 +771,14 @@ def select_best_path_with_elevator(
 
                             wait_time_2 = max(elev_ready_2 - elev_end_1 - transfer, 0)
                             part_time_2 = elev_end_2 + after - elev_end_1
-                            actual_time = elev_end_2 + after - current_time
+                            actual_time = elev_end_2 + after - available_time
 
                             unique_eid_key = f"{eid}|{eid_1}"
                             path_results[unique_eid_key] = {
                                 "path": path,  # 总路径
                                 "path_1": res_1["path"],
                                 "path_2": res_2["path"],
-                                "start_time": current_time,  # 任务起始时间
+                                "start_time": available_time,  # 任务起始时间
                                 "actual_time": actual_time,  # 总耗时
                                 "part_time_1": part_time_1,
                                 "part_time_2": part_time_2,
@@ -831,15 +832,15 @@ def select_best_path_with_elevator(
                 end_floor_2 = int(end_e2.split("_")[0])
 
                 # 检查电梯可预约的时间段
-                elev_start_2, elev_end_2, elev_ready_2 = elev_2.check_reserve(current_time, before, between,
+                elev_start_2, elev_end_2, elev_ready_2 = elev_2.check_reserve(available_time, before, between,
                                                                               from_floor_2)
 
-                wait_time_2 = max(elev_ready_2 - current_time - before, 0)
-                actual_time = elev_end_2 + after - current_time
+                wait_time_2 = max(elev_ready_2 - available_time - before, 0)
+                actual_time = elev_end_2 + after - available_time
 
                 path_results[eid] = {
                     "path": res["path"],  # 总路径
-                    "start_time": current_time,  # 任务起始时间
+                    "start_time": available_time,  # 任务起始时间
                     "actual_time": actual_time,  # 总耗时
                     "part_time_1": 0,
                     "part_time_2": actual_time,
@@ -870,7 +871,7 @@ def select_best_path_with_elevator(
                 }
 
         if actual_time:
-            current_time = actual_time + current_time
+            available_time = actual_time + available_time
         segment_index = segment_index + 1
         start = pickup_pos
         target = target_pos
@@ -920,9 +921,8 @@ def select_best_path_with_elevator(
             "deliver_path": best_deliver_info["path"],
             "deliver_real_path": deliver_path,
             "deliver_total_time": best_deliver_info['actual_time'],
-            "deliver_wait_time": best_deliver_info['wait_time_1'] + best_deliver_info['wait_time_2'] if
-            best_deliver_info[
-                'wait_time_1'] else best_deliver_info['wait_time_2']
+            "deliver_wait_time": best_deliver_info['wait_time_1'] + best_deliver_info[
+                'wait_time_2'] if 'wait_time_1' in best_deliver_info else best_deliver_info['wait_time_2']
         }
 
         # print(
@@ -1106,7 +1106,8 @@ class BatchScheduler:
                     add_3E1_graph=self.elevator_graphs["3_E1"],
                     add_3E2_graph=self.elevator_graphs["3_E2"],
                     elevators=self.elevators,
-                    current_time=max(current_time, robot.expected_available_time)
+                    current_time=current_time,
+                    available_time=max(current_time, robot.expected_available_time)
                 )
 
                 if not pick_path_info or not deliver_path_info:
@@ -1115,21 +1116,22 @@ class BatchScheduler:
                 pick_total_time = pick_path_info["actual_time"]
                 deliver_total_time = deliver_path_info["actual_time"]
                 start_time = pick_path_info["start_time"]
-                current_total_time = pick_total_time + deliver_total_time
+                # 任务总时间：从任务发布到任务执行完毕
+                current_total_time = pick_total_time + deliver_total_time + start_time - current_time
                 # print(current_total_time, best_total_time)
                 # print(start_time, early_start)
                 if current_total_time < best_total_time:
                     best_robot = robot
                     pick_best_path_info = copy.deepcopy(pick_path_info)
                     deliver_best_path_info = copy.deepcopy(deliver_path_info)
-                    best_total_time = pick_total_time + deliver_total_time
+                    best_total_time = current_total_time
                     best_path_results = copy.deepcopy(path_results)
                     early_start = start_time
                 elif current_total_time == best_total_time and start_time < early_start:
                     best_robot = robot
                     pick_best_path_info = copy.deepcopy(pick_path_info)
                     deliver_best_path_info = copy.deepcopy(deliver_path_info)
-                    best_total_time = pick_total_time + deliver_total_time
+                    best_total_time = current_total_time
                     best_path_results = copy.deepcopy(path_results)
                     early_start = start_time
 
@@ -1143,19 +1145,25 @@ class BatchScheduler:
                         selected.append(key)
                         # print("已正确标记最佳送药品路线！")
 
+                final_start_time = max(current_time, best_robot.expected_available_time)
                 assignments.append({
                     "task": task,
                     "robot_id": best_robot.id,
                     "pick_path_info": copy.deepcopy(pick_best_path_info),
                     "deliver_path_info": copy.deepcopy(deliver_best_path_info),
                     "path_results": copy.deepcopy(best_path_results),
-                    "start_time": max(current_time, best_robot.expected_available_time),
-                    "end_time": max(current_time, best_robot.expected_available_time) + best_total_time,
+                    "release_time": current_time,
+                    "start_time": final_start_time,
+                    "end_time": current_time + best_total_time,
                     "selected": selected
                 })
 
                 tasks_total_time += best_total_time
+                wait_robot = final_start_time - current_time
                 print(f"任务 {task.id} 分配给机器人 {best_robot.id}, 预计时间: {best_total_time:.2f}s")
+                if wait_robot:
+                    print(f"（需等待机器人： {wait_robot:.2f}s）")
+
 
                 # 为最佳路径预约电梯（模拟版）
                 if pick_best_path_info["type"] == "elevator":
@@ -1897,8 +1905,11 @@ class BatchScheduler:
         for assignment in assignments:
             pick_path_info = assignment["pick_path_info"]
             deliver_path_info = assignment["deliver_path_info"]
+            release_time = assignment["release_time"]
+            start_time = assignment["start_time"]
 
-            task_total_time = pick_path_info["actual_time"] + deliver_path_info["actual_time"]
+            task_total_time = pick_path_info[
+                                  "actual_time"] + deliver_path_info["actual_time"] + start_time - release_time
             tasks_total_time += task_total_time
 
         return tasks_total_time
