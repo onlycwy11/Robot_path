@@ -1,0 +1,78 @@
+node_list:
+    - node_name: p1
+      floor: 4
+      param:
+        - 0.16
+        - -0.36
+        - 0
+        - 0
+        - p7
+      node_type: "3"
+      connect:
+        - map_name: floot4_inner
+          floor: 4
+          reverse: true
+          target_node: p6
+        - map_name: floot4_inner
+          floor: 4
+          reverse: true
+          target_node: p5
+    - node_name: p2
+      floor: 4
+      param:
+        - 0.59
+        - -0.37
+        - 0
+        - 0.04
+        - p3,p7
+      node_type: "3"
+    - node_name: p3
+      floor: 4
+      param:
+        - 8.85
+        - 0.39
+        - 0
+        - 1.52
+        - p2,p4
+      node_type: "3"
+    - node_name: p4
+      floor: 4
+      param:
+        - 8.42
+        - 12.26
+        - 0
+        - 1.65
+        - p3,p5
+      node_type: "3"
+    - node_name: p5
+      floor: 4
+      param:
+        - 5.61
+        - 12.22
+        - 0
+        - 1.75
+        - p4,p6,p7
+      node_type: "3"
+    - node_name: p6
+      floor: 4
+      param:
+        - 5.55
+        - 13.01
+        - 0
+        - 1.61
+        - p5
+      node_type: "2"
+      connect:
+        - map_name: stairs_1
+          floor: -1000
+          reverse: true
+          target_node: p1
+    - node_name: p7
+      floor: 4
+      param:
+        - -0.1
+        - 11.78
+        - 0
+        - -3.03
+        - p2,p5,p1
+      node_type: "3"

@@ -1,0 +1,51 @@
+node_list:
+    - node_name: p1
+      floor: 4
+      param:
+        - 0.18
+        - -0.01
+        - 0
+        - -0.04
+        - p2
+      node_type: "1"
+    - node_name: p2
+      floor: 4
+      param:
+        - 3.07
+        - 0.14
+        - 0
+        - 1.48
+        - p1,p3
+      node_type: "3"
+    - node_name: p3
+      floor: 4
+      param:
+        - 4.03
+        - 15.53
+        - 0
+        - 0.96
+        - p2,p4
+      node_type: "3"
+    - node_name: p4
+      floor: 4
+      param:
+        - 8.48
+        - 21.15
+        - 0
+        - 0.09
+        - p3,p5
+      node_type: "3"
+    - node_name: p5
+      floor: 4
+      param:
+        - 9.83
+        - 21.36
+        - 0
+        - -0.08
+        - p4
+      node_type: "2"
+      connect:
+        - map_name: floot_1
+          floor: 4
+          reverse: false
+          target_node: p1

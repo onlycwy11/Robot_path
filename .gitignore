@@ -7,3 +7,8 @@ __pycache__/
 .vscode/
 *.log
 .DS_Store
+
+# Environment variables (contains sensitive MQTT credentials)
+.env
+.env.local
+.env.*.local

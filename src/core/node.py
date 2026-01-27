@@ -1,51 +1,115 @@
 import math
+import os.path
+from functools import lru_cache
 
-# 局部相对坐标（单位：cm 或自定义单位）
-local_coords = {
-    'A': (60.00, 100.00), 'Ar': (60.00, 113.000),
-    'B': (75.00, 100.00), 'Br': (75.00, 113.00),
-    'C': (143.00, 100.00), 'Cr': (143.00, 113.00),
-    'D': (220.00, 100.00), 'Dr': (220.00, 113.00),
-    'E': (77.00, 113.00), 'Er': (77.00, 100.00),
-    'F': (200.00, 113.00), 'Fr': (200.00, 100.00),
-    'G': (293.00, 113.00), 'Gr': (293.00, 100.00),
-    'Left_1': (3.00, 113.00), 'Left_2': (3.00, 100.00),
-    'Right_1': (433.00, 113.00), 'Right_2': (433.00, 100.00),
-    'E1': (380.00, 150.00), 'E2': (405.00, 150.00),
-    'Stair1_1': (93.00, 150.00), 'Stair1_2': (122.00, 150.00),
-    'Stair2_1': (380.00, 199.00), 'Stair2_2': (380.00, 167.00),
-}
+import yaml
+
+from src.utils.logger import graph_logger
+
+BASE_PATH = os.path.join(os.path.dirname(__file__), "data")
 
 
-def get_coordinates_from_node(node: str):
-    """将节点名解析为全局坐标 (cm，整数)"""
+@lru_cache(maxsize=8)
+def _load_node_coord_cache(campus_name: str) -> dict:
+    """
+    读取 merged_nodes.yaml，建立 node_name -> (x_cm, y_cm, z_cm) 的索引
+
+    使用 LRU 缓存支持多校园切换，最多缓存 8 个校园的数据。
+    """
+    yaml_path = os.path.join(BASE_PATH, campus_name, "merged_nodes.yaml")
+
     try:
-        parts = node.split('_')
-        floor = int(parts[0])
-        building = int(parts[1])
-        room = parts[2]
-        if len(parts) == 4:
-            room = parts[2] + '_' + parts[3]
-    except Exception:
-        print(f"节点 {node} 格式错误！")
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        graph_logger.warning(f"merged_nodes.yaml 未找到: {yaml_path}")
+        return {}
+    except Exception as e:
+        graph_logger.warning(f"读取 merged_nodes.yaml 失败：{e}")
+        return {}
+
+    node_list = data.get("node_list", None)
+    if node_list is None:
+        node_list = data.get("ode_list", None)
+
+    if not isinstance(node_list, list):
+        raise ValueError(f"merged_nodes.yaml 格式不对：缺少 node_list(或 ode_list) list，实际为 {type(node_list)}")
+
+    cache = {}
+    for n in node_list:
+        name = n.get("node_name")
+        if not name:
+            continue
+
+        c = n.get("node_coordinate", {}) or {}
+        unit = str(c.get("unit", "m")).lower().strip()
+
+        SCALE = 0.05
+        x = float(c.get("x", 0.0)) * SCALE
+        y = float(c.get("y", 0.0)) * SCALE
+        z = float(c.get("z", 0.0)) * SCALE
+
+        if unit in ("m", "meter", "meters"):
+            x_cm = int(round(x * 100))
+            y_cm = int(round(y * 100))
+            z_cm = int(round(z * 100))
+        elif unit in ("cm", "centimeter", "centimeters"):
+            x_cm = int(round(x))
+            y_cm = int(round(y))
+            z_cm = int(round(z))
+        else:
+            x_cm = int(round(x * 100))
+            y_cm = int(round(y * 100))
+            z_cm = int(round(z * 100))
+
+        cache[str(name)] = (x_cm, y_cm, z_cm)
+
+    graph_logger.debug(f"加载校园 {campus_name} 节点数据: {len(cache)} 个节点")
+    return cache
+
+
+def clear_coordinate_cache():
+    """清理坐标缓存（切换校园时调用）"""
+    _load_node_coord_cache.cache_clear()
+    graph_logger.info("坐标缓存已清理")
+
+
+def get_cache_info() -> dict:
+    """获取缓存状态信息"""
+    info = _load_node_coord_cache.cache_info()
+    return {
+        "hits": info.hits,
+        "misses": info.misses,
+        "maxsize": info.maxsize,
+        "currsize": info.currsize
+    }
+
+
+def get_coordinates_from_node(node: str, campus_name: str = "zheshang"):
+    """
+    从 merged_nodes.yaml 查表得到全局坐标 (cm, int)：
+      return (x_cm, y_cm, z_cm)
+
+    Args:
+        node: 节点名称
+        campus_name: 校园名称（支持多校园）
+
+    Returns:
+        (x_cm, y_cm, z_cm) 坐标三元组，或 None
+    """
+    cache = _load_node_coord_cache(campus_name)
+
+    if node not in cache:
+        graph_logger.warning(f"节点 {node} 未在 {campus_name} 的 merged_nodes.yaml 中定义！")
         return None
 
-    if room not in local_coords:
-        print(f"房间 {room} 未定义！")
-        return None
+    return cache[node]
 
-    local_x, local_y = local_coords[room]
-    x = local_x + (building - 1) * 633.00
-    y = local_y
-    z = 1.10 + (floor - 1) * 3.50
-    return (int(round(x * 100)), int(round(y * 100)), int(round(z * 100)))  # 转为 cm，整数
-
-
-def show_path_with_coords(path_list):
+def show_path_with_coords(path_list, campus_name: str):
     # print("Path with Coordinates:")
     new_path = []
     for node in path_list:
-        coord = get_coordinates_from_node(node)
+        coord = get_coordinates_from_node(node, campus_name)
         new_path.append(coord)
         # if coord:
         #     print(f"{node:<12} -> 坐标 (x={coord[0]}, y={coord[1]}, z={coord[2]})")
@@ -66,9 +130,9 @@ def get_speed(node1, node2):
         return 150.0
 
 
-def get_path_points(path_list):
+def get_path_points(path_list, campus_name: str):
     """返回每 1 秒的路径点 (x, y, z, t)，坐标均为整数"""
-    coords = [get_coordinates_from_node(n) for n in path_list]
+    coords = [get_coordinates_from_node(n, campus_name) for n in path_list]
     time_points = []
     total_time = 0.0
 
@@ -121,20 +185,21 @@ def get_position_at_time(t: float, path_points):
     return path_points[-1][:3]
 
 
-def get_xyz_from_path_and_time(path_list, t: float):
+def get_xyz_from_path_and_time(path_list, t: float, campus_name: str):
     """
     输入路径 path_list 和时间 t（秒），返回当前 (x, y, z) 坐标（整数）。
     若超过总时间，返回终点坐标。
     """
     # 先生成整条路径的 (x, y, z, t)
-    path_points = get_path_points(path_list)
+    path_points = get_path_points(path_list, campus_name)
     # 使用已有函数查询指定时间的坐标
     pos = get_position_at_time(t, path_points)
     return pos
 
 
 def get_xyz_from_path_and_time_with_elevator_wait(
-        path_list, t: float, wait_time_1: float = 0.0, wait_time_2: float = 0.0):
+        path_list, t: float, wait_time_1: float = 0.0, wait_time_2: float = 0.0, campus_name: str = "zheshang"
+):
     """
     路径 path_list 和时间 t（秒） -> 返回当前 (x, y, z) 坐标。
     如果路径中有 E1/E2 节点：
@@ -143,7 +208,7 @@ def get_xyz_from_path_and_time_with_elevator_wait(
     - 如果只有一组 E1/E2 节点，则只在它们之间停留 wait_time_2 秒。
     """
     path_points = []
-    coords = [get_coordinates_from_node(n) for n in path_list]
+    coords = [get_coordinates_from_node(n, campus_name) for n in path_list]
     total_time = 0.0
     elevator_groups = []
     current_group = []
@@ -240,30 +305,11 @@ def get_xyz_from_path_and_time_with_elevator_wait(
 
 
 if __name__ == "__main__":
-    # nodes = ['1_1_Left_1', '1_1_Left_2', '1_1_A', '1_1_B', '1_1_Er',
-    #          '1_1_C', '1_1_Fr', '1_1_D', '1_1_Gr', '1_1_Right_2',
-    #          '1_2_Left_2', '1_2_A', '1_2_B', '1_2_Er', '1_2_C',
-    #          '1_2_Fr', '1_2_D', '1_2_Gr', '1_2_Right_2',
-    #          '1_3_Left_2', '1_3_A', '1_3_B', '1_3_Er', '1_3_C',
-    #          '1_3_Fr', '1_3_D', '1_3_Gr', '1_3_E1', '3_3_E1', '3_3_G']
-    # nodes = ['1_3_E1', '3_3_E1', '3_3_G']
-    # nodes = ['4_3_G', '4_3_Gr', '4_3_E1', '1_3_E1', '1_3_G', '1_3_Dr',
-    #          '1_3_F', '1_3_Cr', '1_3_E', '1_3_Br', '1_3_Ar', '1_3_Left_1',
-    #          '1_2_Right_1', '1_2_E2', '6_2_E2', '6_2_G']
-    # nodes = ['1_2_E2', '6_2_E2']
-    nodes = ['1_2_Stair1_2', '2_2_Stair1_2', '3_2_Stair1_2', '4_2_Stair1_2', '5_2_Stair1_2', '6_2_Stair1_2', '7_2_Stair1_2', '8_2_Stair1_2', '8_2_Stair1_1', '8_2_E']
-    path_pts = get_path_points(nodes)
-    print(f"路径{show_path_with_coords(nodes)}")
-    # print(f"共生成 {len(path_pts)} 个点，总时长约 {path_pts[-1][3]} 秒。")
-    # print (path_pts)
-    # for test_t in [0, 9.5, 10, 50, 100,300, 500, 1000, 1100,1110,1120,1130, 1140, 1150, 1160, 1170, 1175, 1180, 1190,1200, 1300, 1500, 2000]:
-    #     xyz = get_xyz_from_path_and_time(nodes, test_t)
-    #     print(f"t={test_t:6.2f}s -> 位置: (x={xyz[0]}, y={xyz[1]}, z={xyz[2]})")
-
-    # for test_t in [0, 9.5, 10, 30, 31, 32, 50, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
-    #                89, 90, 100, 300, 500, 510, 520, 530, 531, 535, 538, 539, 540, 546, 547, 548, 550,
-    #                560, 570, 580, 590, 600, 660, 700]:
-    for test_t in [0, 3, 5, 6, 7, 8, 9.5, 10, 11, 12, 13, 14, 15, 18, 30]:
+    # 测试示例
+    nodes = ['1_2_Stair1_2', '2_2_Stair1_2', '3_2_Stair1_2', '4_2_Stair1_2', '5_2_Stair1_2',
+             '6_2_Stair1_2', '7_2_Stair1_2', '8_2_Stair1_2', '8_2_Stair1_1', '8_2_E']
+    path_pts = get_path_points(nodes, 'sandun')
+    graph_logger.info(f"路径坐标: {show_path_with_coords(nodes, 'sandun')}")
+    for test_t in [0, 3, 5, 10, 15, 30]:
         xyz = get_xyz_from_path_and_time_with_elevator_wait(nodes, test_t, 0, 5)
-        # xyz = get_xyz_from_path_and_time_with_elevator_wait(nodes, test_t, 5, 30)
-        print(f"t={test_t:6.2f}s -> 位置: (x={xyz[0]}, y={xyz[1]}, z={xyz[2]})")
+        graph_logger.info(f"t={test_t:6.2f}s -> 位置: (x={xyz[0]}, y={xyz[1]}, z={xyz[2]})")
