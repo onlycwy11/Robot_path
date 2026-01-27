@@ -1,87 +1,51 @@
 import math
-import os.path
 
-import yaml
-
-BASE_PATH = os.path.join(os.path.dirname(__file__), "data")
-# 缓存：避免每次都读文件
-_NODE_COORD_CACHE = None
-
-
-def _load_node_coord_cache(yaml_path: str):
-    """
-    读取 merged_nodes.yaml，建立 node_name -> (x_cm, y_cm, z_cm) 的索引
-    """
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-
-    node_list = data.get("node_list", None)
-    if node_list is None:
-        # 兼容你之前贴出来可能写成 ode_list 的情况
-        node_list = data.get("ode_list", None)
-
-    if not isinstance(node_list, list):
-        raise ValueError(f"merged_nodes.yaml 格式不对：缺少 node_list(或 ode_list) list，实际为 {type(node_list)}")
-
-    cache = {}
-    for n in node_list:
-        name = n.get("node_name")
-        if not name:
-            continue
-
-        c = n.get("node_coordinate", {}) or {}
-        unit = str(c.get("unit", "m")).lower().strip()
-        
-        SCALE = 0.05
-        x = float(c.get("x", 0.0)) * SCALE
-        y = float(c.get("y", 0.0)) * SCALE
-        z = float(c.get("z", 0.0)) * SCALE
-
-        # 输出 cm 整数
-        if unit in ("m", "meter", "meters"):
-            x_cm = int(round(x * 100))
-            y_cm = int(round(y * 100))
-            z_cm = int(round(z * 100))
-        elif unit in ("cm", "centimeter", "centimeters"):
-            x_cm = int(round(x))
-            y_cm = int(round(y))
-            z_cm = int(round(z))
-        else:
-            # 未知单位：保守当 m
-            x_cm = int(round(x * 100))
-            y_cm = int(round(y * 100))
-            z_cm = int(round(z * 100))
-
-        cache[str(name)] = (x_cm, y_cm, z_cm)
-
-    return cache
+# 局部相对坐标（单位：cm 或自定义单位）
+local_coords = {
+    'A': (60.00, 100.00), 'Ar': (60.00, 113.000),
+    'B': (75.00, 100.00), 'Br': (75.00, 113.00),
+    'C': (143.00, 100.00), 'Cr': (143.00, 113.00),
+    'D': (220.00, 100.00), 'Dr': (220.00, 113.00),
+    'E': (77.00, 113.00), 'Er': (77.00, 100.00),
+    'F': (200.00, 113.00), 'Fr': (200.00, 100.00),
+    'G': (293.00, 113.00), 'Gr': (293.00, 100.00),
+    'Left_1': (3.00, 113.00), 'Left_2': (3.00, 100.00),
+    'Right_1': (433.00, 113.00), 'Right_2': (433.00, 100.00),
+    'E1': (380.00, 150.00), 'E2': (405.00, 150.00),
+    'Stair1_1': (93.00, 150.00), 'Stair1_2': (122.00, 150.00),
+    'Stair2_1': (380.00, 199.00), 'Stair2_2': (380.00, 167.00),
+}
 
 
-def get_coordinates_from_node(node: str, campus_name: str = "zheshang"):
-    """
-    从 merged_nodes.yaml 查表得到全局坐标 (cm, int)：
-      return (x_cm, y_cm, z_cm)
-    """
-    global _NODE_COORD_CACHE
-    if _NODE_COORD_CACHE is None:
-        try:
-            yaml_path = os.path.join(BASE_PATH, campus_name, "merged_nodes.yaml")
-            _NODE_COORD_CACHE = _load_node_coord_cache(yaml_path)
-        except Exception as e:
-            print(f"读取 merged_nodes.yaml 失败：{e}")
-            return None
-
-    if node not in _NODE_COORD_CACHE:
-        print(f"节点 {node} 未在 merged_nodes.yaml 中定义！")
+def get_coordinates_from_node(node: str):
+    """将节点名解析为全局坐标 (cm，整数)"""
+    try:
+        parts = node.split('_')
+        floor = int(parts[0])
+        building = int(parts[1])
+        room = parts[2]
+        if len(parts) == 4:
+            room = parts[2] + '_' + parts[3]
+    except Exception:
+        print(f"节点 {node} 格式错误！")
         return None
 
-    return _NODE_COORD_CACHE[node]
+    if room not in local_coords:
+        print(f"房间 {room} 未定义！")
+        return None
 
-def show_path_with_coords(path_list, campus_name: str):
+    local_x, local_y = local_coords[room]
+    x = local_x + (building - 1) * 633.00
+    y = local_y
+    z = 1.10 + (floor - 1) * 3.50
+    return (int(round(x * 100)), int(round(y * 100)), int(round(z * 100)))  # 转为 cm，整数
+
+
+def show_path_with_coords(path_list):
     # print("Path with Coordinates:")
     new_path = []
     for node in path_list:
-        coord = get_coordinates_from_node(node, campus_name)
+        coord = get_coordinates_from_node(node)
         new_path.append(coord)
         # if coord:
         #     print(f"{node:<12} -> 坐标 (x={coord[0]}, y={coord[1]}, z={coord[2]})")
@@ -102,9 +66,9 @@ def get_speed(node1, node2):
         return 150.0
 
 
-def get_path_points(path_list, campus_name: str):
+def get_path_points(path_list):
     """返回每 1 秒的路径点 (x, y, z, t)，坐标均为整数"""
-    coords = [get_coordinates_from_node(n, campus_name) for n in path_list]
+    coords = [get_coordinates_from_node(n) for n in path_list]
     time_points = []
     total_time = 0.0
 
@@ -157,21 +121,20 @@ def get_position_at_time(t: float, path_points):
     return path_points[-1][:3]
 
 
-def get_xyz_from_path_and_time(path_list, t: float, campus_name: str):
+def get_xyz_from_path_and_time(path_list, t: float):
     """
     输入路径 path_list 和时间 t（秒），返回当前 (x, y, z) 坐标（整数）。
     若超过总时间，返回终点坐标。
     """
     # 先生成整条路径的 (x, y, z, t)
-    path_points = get_path_points(path_list, campus_name)
+    path_points = get_path_points(path_list)
     # 使用已有函数查询指定时间的坐标
     pos = get_position_at_time(t, path_points)
     return pos
 
 
 def get_xyz_from_path_and_time_with_elevator_wait(
-        path_list, t: float, wait_time_1: float = 0.0, wait_time_2: float = 0.0, campus_name: str = "zheshang"
-):
+        path_list, t: float, wait_time_1: float = 0.0, wait_time_2: float = 0.0):
     """
     路径 path_list 和时间 t（秒） -> 返回当前 (x, y, z) 坐标。
     如果路径中有 E1/E2 节点：
@@ -180,7 +143,7 @@ def get_xyz_from_path_and_time_with_elevator_wait(
     - 如果只有一组 E1/E2 节点，则只在它们之间停留 wait_time_2 秒。
     """
     path_points = []
-    coords = [get_coordinates_from_node(n, campus_name) for n in path_list]
+    coords = [get_coordinates_from_node(n) for n in path_list]
     total_time = 0.0
     elevator_groups = []
     current_group = []
@@ -289,8 +252,8 @@ if __name__ == "__main__":
     #          '1_2_Right_1', '1_2_E2', '6_2_E2', '6_2_G']
     # nodes = ['1_2_E2', '6_2_E2']
     nodes = ['1_2_Stair1_2', '2_2_Stair1_2', '3_2_Stair1_2', '4_2_Stair1_2', '5_2_Stair1_2', '6_2_Stair1_2', '7_2_Stair1_2', '8_2_Stair1_2', '8_2_Stair1_1', '8_2_E']
-    path_pts = get_path_points(nodes, 'sandun')
-    print(f"路径{show_path_with_coords(nodes, 'sandun')}")
+    path_pts = get_path_points(nodes)
+    print(f"路径{show_path_with_coords(nodes)}")
     # print(f"共生成 {len(path_pts)} 个点，总时长约 {path_pts[-1][3]} 秒。")
     # print (path_pts)
     # for test_t in [0, 9.5, 10, 50, 100,300, 500, 1000, 1100,1110,1120,1130, 1140, 1150, 1160, 1170, 1175, 1180, 1190,1200, 1300, 1500, 2000]:

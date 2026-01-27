@@ -1,12 +1,17 @@
 # batch_scheduler.py
 import json
+import pdb
+import os.path
 import time
 import math
 import threading
 from typing import List, Dict, Tuple, Any, DefaultDict
-from src.core.graph import initial_six_graphs
+# from src.core.graph import initial_six_graphs
 from src.core.node import show_path_with_coords, get_coordinates_from_node, \
     get_xyz_from_path_and_time_with_elevator_wait
+from src.core.graph_loader import load_stair_graph_and_elevator_graphs
+from src.core.template_to_topo import building_graph
+
 from collections import defaultdict
 import copy
 from itertools import permutations, product, groupby
@@ -192,10 +197,18 @@ class Elevator:
 
 
 class Robot:
-    def __init__(self, rid: int, skill: str, position: str, enable_mqtt_charge_updates: bool = False):
+    def __init__(
+            self,
+            rid: int,
+            skill: str,
+            position: str,
+            enable_mqtt_charge_updates: bool = False,
+            campus_name: str = "zheshang"
+    ):
         self.id = rid
         self.skill = skill
         self.initial_time = 0
+        self.campus_name = campus_name
 
         self.charge = 100.0
         self.expected_charge = 100.0
@@ -216,7 +229,7 @@ class Robot:
         self.running_time = 0.0  # 当前任务已执行时间
         self.wait_pair_1 = (0.0, 0.0)
         self.wait_pair_2 = (0.0, 0.0)
-        self.current_position = get_coordinates_from_node(position)  # 初始xyz坐标
+        self.current_position = get_coordinates_from_node(position, self.campus_name)  # 初始xyz坐标
 
         self.enable_mqtt_charge_updates = enable_mqtt_charge_updates  # 新增：控制是否启用MQTT电量更新
         self.mqtt_client = None  # 初始化为 None，仅在需要时创建
@@ -256,7 +269,7 @@ class Robot:
                     self.charge = 0.0
                     self.is_charging = True
                     self.position = CHARGING_POSITION
-                    self.current_position = get_coordinates_from_node(CHARGING_POSITION)
+                    self.current_position = get_coordinates_from_node(CHARGING_POSITION, self.campus_name)
                     self.path = []  # 停止当前任务
                     # self.task_list.clear()  # 清空任务列表
                 elif self.is_charging:
@@ -366,7 +379,8 @@ class Robot:
                         path_list=self.path1,
                         t=self.running_time,
                         wait_time_1=wait_time_1,
-                        wait_time_2=wait_time_2
+                        wait_time_2=wait_time_2,
+                        campus_name=self.campus_name
                     )
                     self.current_position = (x, y, z)
                 else:
@@ -375,7 +389,8 @@ class Robot:
                         path_list=self.path2,
                         t=self.running_time - self.pick_time,
                         wait_time_1=wait_time_1,
-                        wait_time_2=wait_time_2
+                        wait_time_2=wait_time_2,
+                        campus_name=self.campus_name
                     )
                     self.current_position = (x, y, z)
             except Exception:
@@ -445,14 +460,24 @@ class Task:
         self.deliver_duration = deliver_duration  # 任务持续时间
 
 
-def init_six_elevators() -> Dict[str, Elevator]:
+def init_elevators(elevators_name: List[str]) -> Dict[str, Elevator]:
     elevators = {}
-    elevators["1_E1"] = Elevator(1, 1, "E1")
-    elevators["1_E2"] = Elevator(2, 1, "E2")
-    elevators["2_E1"] = Elevator(3, 2, "E1")
-    elevators["2_E2"] = Elevator(4, 2, "E2")
-    elevators["3_E1"] = Elevator(5, 3, "E1")
-    elevators["3_E2"] = Elevator(6, 3, "E2")
+    index = 0
+    for elevator_name in elevators_name:
+        index += 1
+        parts = elevator_name.split("_")
+        if len(parts) == 2:
+            number_part = parts[0]  # "1"
+            string_part = parts[1]  # "E1"
+
+            try:
+                number_part = int(number_part)
+                elevators[elevator_name] = Elevator(index, number_part, string_part)
+            except ValueError:
+                print(f"Error: '{number_part}' 不是有效的数字")
+        else:
+            print("Error: 格式不符合预期，应为 '数字_字符串'")
+
     return elevators
 
 
@@ -643,19 +668,16 @@ def select_best_path_with_elevator(
         pickup_pos: str,
         target_pos: str,
         stair_graph,
-        add_1E1_graph,
-        add_1E2_graph,
-        add_2E1_graph,
-        add_2E2_graph,
-        add_3E1_graph,
-        add_3E2_graph,
+        graph_map,
         elevators: dict,
         current_time: float,
-        available_time: float
+        available_time: float,
+        campus_name: str
 ):
     global current_paths  # 全局变量，存储所有任务的路径信息
     path_results = {}  # 存储所有可能路径的结果
     tid = task.id
+    # pdb.set_trace()
 
     # 楼梯路径
     # 调用Dijkstra算法计算纯楼梯路径的最短路径和耗时
@@ -702,14 +724,14 @@ def select_best_path_with_elevator(
 
     # 电梯路径
     # 建立电梯ID到对应增强图的映射
-    graph_map = {
-        "1_E1": add_1E1_graph,
-        "1_E2": add_1E2_graph,
-        "2_E1": add_2E1_graph,
-        "2_E2": add_2E2_graph,
-        "3_E1": add_3E1_graph,
-        "3_E2": add_3E2_graph,
-    }
+    # graph_map = {
+    #     "1_E1": add_1E1_graph,
+    #     "1_E2": add_1E2_graph,
+    #     "2_E1": add_2E1_graph,
+    #     "2_E2": add_2E2_graph,
+    #     "3_E1": add_3E1_graph,
+    #     "3_E2": add_3E2_graph,
+    # }
 
     start = start_pos
     if pickup_pos:
@@ -890,7 +912,7 @@ def select_best_path_with_elevator(
     if pick_paths:
         best_pick_key = min(pick_paths.keys(), key=lambda k: pick_paths[k]["actual_time"])
         best_pick_info = path_results[best_pick_key]
-        pick_path = show_path_with_coords(best_pick_info["path"])
+        pick_path = show_path_with_coords(best_pick_info["path"], campus_name)
     else:
         print("无取药品路径")
         best_pick_key = None
@@ -902,7 +924,7 @@ def select_best_path_with_elevator(
     if deliver_paths:
         best_deliver_key = min(deliver_paths.keys(), key=lambda k: deliver_paths[k]["actual_time"])
         best_deliver_info = path_results[best_deliver_key]
-        deliver_path = show_path_with_coords(best_deliver_info["path"])
+        deliver_path = show_path_with_coords(best_deliver_info["path"], campus_name)
     else:
         print("无送药品路径")
         best_deliver_key = None
@@ -974,11 +996,12 @@ def generate_constrained_permutations(tasks: List[Task]):
 
 
 class BatchScheduler:
-    def __init__(self, robots, elevators, stair_graph, elevator_graphs):
+    def __init__(self, robots, elevators, stair_graph, elevator_graphs, campus_name):
         self.robots = robots
         self.elevators = elevators
         self.stair_graph = stair_graph
         self.elevator_graphs = elevator_graphs
+        self.campus_name = campus_name
         self.robot_plans = {}  # 存储机器人的任务计划
         self.elevator_schedules = defaultdict(list)  # 电梯调度表
         self.simulated_stair_reservations = defaultdict(list)
@@ -1082,6 +1105,7 @@ class BatchScheduler:
 
             # 找到技能匹配的机器人
             feasible_robots = self.find_feasible_robots(task)
+            print(feasible_robots)
 
             if not feasible_robots:
                 print(f"[警告] 任务 {task.id} 没有匹配技能的机器人")
@@ -1099,15 +1123,11 @@ class BatchScheduler:
                     pickup_pos=task.start,
                     target_pos=task.target,
                     stair_graph=self.stair_graph,
-                    add_1E1_graph=self.elevator_graphs["1_E1"],
-                    add_1E2_graph=self.elevator_graphs["1_E2"],
-                    add_2E1_graph=self.elevator_graphs["2_E1"],
-                    add_2E2_graph=self.elevator_graphs["2_E2"],
-                    add_3E1_graph=self.elevator_graphs["3_E1"],
-                    add_3E2_graph=self.elevator_graphs["3_E2"],
+                    graph_map=self.elevator_graphs,
                     elevators=self.elevators,
                     current_time=current_time,
-                    available_time=max(current_time, robot.expected_available_time)
+                    available_time=max(current_time, robot.expected_available_time),
+                    campus_name=self.campus_name
                 )
 
                 if not pick_path_info or not deliver_path_info:
@@ -2060,43 +2080,46 @@ def get_robot_status_real_time(batch_scheduler, current_timestamp=None):
 
 
 # 批量调度使用示例
-def batch_scheduling_demo():
-    """
-    批量调度演示函数
-    """
-    # 初始化（使用原有的初始化代码）
-    stair_graph, add_1E1_graph, add_1E2_graph, add_2E1_graph, add_2E2_graph, add_3E1_graph, add_3E2_graph, _ = initial_six_graphs(
-        speed_land=1.5, speed_stair=0.5
-    )
-    elevators = init_six_elevators()
-    robots = [
-        Robot(0, "dog", "1_1_Left_1"),
-        Robot(1, "dog", "1_1_Left_1"),
-        Robot(2, "human", "1_1_Left_1"),
-        Robot(3, "human", "1_1_Left_1"),
-    ]
-    elevator_graphs = {
-        "1_E1": add_1E1_graph, "1_E2": add_1E2_graph,
-        "2_E1": add_2E1_graph, "2_E2": add_2E2_graph,
-        "3_E1": add_3E1_graph, "3_E2": add_3E2_graph
-    }
+# def batch_scheduling_demo():
+#     """
+#     批量调度演示函数
+#     """
+#     # 初始化（使用原有的初始化代码）
+#     stair_graph, add_1E1_graph, add_1E2_graph, add_2E1_graph, add_2E2_graph, add_3E1_graph, add_3E2_graph, _ = initial_six_graphs(
+#         speed_land=1.5, speed_stair=0.5
+#     )
+#     elevators = init_six_elevators()
+#     robots = [
+#         Robot(0, "dog", "1_1_Left_1"),
+#         Robot(1, "dog", "1_1_Left_1"),
+#         Robot(2, "human", "1_1_Left_1"),
+#         Robot(3, "human", "1_1_Left_1"),
+#     ]
+#     elevator_graphs = {
+#         "1_E1": add_1E1_graph, "1_E2": add_1E2_graph,
+#         "2_E1": add_2E1_graph, "2_E2": add_2E2_graph,
+#         "3_E1": add_3E1_graph, "3_E2": add_3E2_graph
+#     }
+#
+#     # 创建批量调度器
+#     batch_scheduler = BatchScheduler(robots, elevators, stair_graph, elevator_graphs)
+#
+#     # 创建批量任务
+#     tasks = [
+#         Task(0, "dog", "9_2_B", "3_5_A", 3),
+#         Task(1, "human", "3_5_A", "9_2_B", 3),
+#         Task(2, "dog", "6_3_F", "6_3_C", 3),
+#         Task(3, "human", "3_7_D", "3_7_D", 3)
+#     ]
+#
+#     # 执行批量调度
+#     assignments = batch_scheduler.schedule_batch(tasks)
+#
+#     return batch_scheduler, assignments
 
-    # 创建批量调度器
-    batch_scheduler = BatchScheduler(robots, elevators, stair_graph, elevator_graphs)
 
-    # 创建批量任务
-    tasks = [
-        Task(0, "dog", "9_2_B", "3_5_A", 3),
-        Task(1, "human", "3_5_A", "9_2_B", 3),
-        Task(2, "dog", "6_3_F", "6_3_C", 3),
-        Task(3, "human", "3_7_D", "3_7_D", 3)
-    ]
-
-    # 执行批量调度
-    assignments = batch_scheduler.schedule_batch(tasks)
-
-    return batch_scheduler, assignments
-
+BASE_PATH = os.path.dirname(os.path.dirname(__file__))
+MERGED_YAML = os.path.join(BASE_PATH, "core", "merged_nodes.yaml")
 
 def start_interactive_scheduler():
     """
@@ -2104,24 +2127,41 @@ def start_interactive_scheduler():
     用户可以动态输入任务，查看机器人状态，或退出系统
     """
     # 初始化图与对象
-    stair_graph, add_1E1_graph, add_1E2_graph, add_2E1_graph, add_2E2_graph, add_3E1_graph, add_3E2_graph, _ = initial_six_graphs(
-        speed_land=1.5, speed_stair=0.5
+    # stair_graph, add_1E1_graph, add_1E2_graph, add_2E1_graph, add_2E2_graph, add_3E1_graph, add_3E2_graph, _ = initial_six_graphs(
+    #     speed_land=1.5, speed_stair=0.5
+    # )
+    # elevators = init_six_elevators()
+
+    building_graph("name")
+
+    # 初始化图与对象
+    stair_graph, elevator_graphs = load_stair_graph_and_elevator_graphs(
+        merged_nodes_yaml=MERGED_YAML,
+        elevator_xy_tol=0.25,  # (x,y) 判同一电梯的容差，可调；严格相同可设 0.0
+        ensure_legacy_keys=True  # 给 batch_scheduler 补齐 1_E1..3_E2，避免 KeyError
     )
-    elevators = init_six_elevators()
+
+    # 你现在 scheduler 里仍然用 init_six_elevators（固定6台），先保留也能跑。
+    # 如果你后续要严格“只用真实存在的电梯”，我们再把 scheduler 里硬编码那块改成动态遍历 elevator_graphs。
+    elevators_name = []
+    for key in elevator_graphs.keys():
+        elevators_name.append(key)
+    elevators = init_elevators(elevators_name)
+
     robots = [
-        Robot(0, "dog", "1_1_Left_1"),
-        Robot(1, "dog", "1_1_Left_1"),
-        Robot(2, "human", "1_1_Left_1"),
-        Robot(3, "human", "1_1_Left_1"),
+        Robot(0, "dog", "4_1_p1", campus_name="sandun"),
+        Robot(1, "dog", "4_1_p1", campus_name="sandun"),
+        Robot(2, "human", "4_1_p1", campus_name="sandun"),
+        Robot(3, "human", "4_1_p1", campus_name="sandun"),
     ]
-    elevator_graphs = {
-        "1_E1": add_1E1_graph, "1_E2": add_1E2_graph,
-        "2_E1": add_2E1_graph, "2_E2": add_2E2_graph,
-        "3_E1": add_3E1_graph, "3_E2": add_3E2_graph
-    }
+    # elevator_graphs = {
+    #     "1_E1": add_1E1_graph, "1_E2": add_1E2_graph,
+    #     "2_E1": add_2E1_graph, "2_E2": add_2E2_graph,
+    #     "3_E1": add_3E1_graph, "3_E2": add_3E2_graph
+    # }
 
     # 创建批量调度器
-    batch_scheduler = BatchScheduler(robots, elevators, stair_graph, elevator_graphs)
+    batch_scheduler = BatchScheduler(robots, elevators, stair_graph, elevator_graphs, "sandun")
     task_counter = 0
 
     print("=== 交互式批量调度系统 ===")
